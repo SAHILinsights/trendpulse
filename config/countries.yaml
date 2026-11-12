@@ -1,0 +1,45 @@
+# Regions monitored by TrendPulse.
+# Add or remove a country here — no pipeline code changes are needed.
+# `enabled: false` keeps the region in dim_regions (history stays queryable)
+# but stops new ingestion for it.
+#
+# chart_categories: YouTube videoCategoryIds requested with chart=mostPopular
+# in addition to the uncategorised chart. Since July 2025 YouTube's
+# mostPopular chart is centred on Music (10), Film/Movies and Gaming (20),
+# so we request those explicitly. Not every category is valid in every
+# region; the ingestion engine records a 4xx for an unsupported
+# (region, category) pair and moves on.
+
+default_chart_categories: [10, 20]
+
+countries:
+  - code: IN
+    name: India
+    enabled: true
+  - code: US
+    name: United States
+    enabled: true
+  - code: GB
+    name: United Kingdom
+    enabled: true
+  - code: CA
+    name: Canada
+    enabled: true
+  - code: AU
+    name: Australia
+    enabled: true
+  - code: DE
+    name: Germany
+    enabled: true
+  - code: FR
+    name: France
+    enabled: true
+  - code: JP
+    name: Japan
+    enabled: true
+  - code: KR
+    name: South Korea
+    enabled: true
+  - code: BR
+    name: Brazil
+    enabled: true

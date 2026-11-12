@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: ruff check src tests scripts streamlit_app.py
+      - name: Validate configuration
+        run: trendpulse validate-config && trendpulse quota-plan
+      - name: Secret scan (repository files)
+        run: python scripts/check_secrets.py
+      - name: Secret scan (git history, gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    needs: lint-and-config
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tp
+          POSTGRES_PASSWORD: tp
+          POSTGRES_DB: tp_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tp" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Tests (SQLite warehouse) + coverage
+        run: pytest --cov=trendpulse --cov-report=term-missing --cov-report=xml
+      - name: Tests (PostgreSQL warehouse)
+        env:
+          TRENDPULSE_TEST_DATABASE_URL: postgresql://tp:tp@localhost:5432/tp_test
+        run: pytest -q -m integration
+      - name: Migration DDL applies to PostgreSQL
+        env:
+          PGPASSWORD: tp
+        run: psql -h localhost -U tp -d tp_test -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS trendpulse CASCADE" -f migrations/001_initial_schema.sql
+      - name: End-to-end smoke (offline simulator, 6 cycles)
+        env:
+          TRENDPULSE_DATA_DIR: ${{ runner.temp }}/tp
+          TRENDPULSE__INGESTION__MIN_SECONDS_BETWEEN_REQUESTS: "0"
+        run: trendpulse simulate --cycles 6 --interval 30 && trendpulse status

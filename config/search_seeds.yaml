@@ -1,0 +1,54 @@
+# Topic-oriented discovery seeds (search.list).
+#
+# search.list costs 100 quota units per call, so seeds are NOT run every
+# cycle. The scheduler walks a round-robin over (seed, region) pairs and runs
+# only `searches_per_cycle` of them every `search_interval_minutes`
+# (see pipeline.yaml). Adding a seed here simply lengthens the rotation.
+#
+# regions: optional list restricting which regions a seed is searched in.
+#          Omit to search every enabled region.
+
+seeds:
+  - id: ai
+    category: AI
+    query: "artificial intelligence"
+  - id: ai_tools
+    category: AI
+    query: "AI tools new"
+  - id: technology
+    category: Technology
+    query: "tech news"
+  - id: gaming
+    category: Gaming
+    query: "new game release"
+  - id: entertainment
+    category: Entertainment
+    query: "official trailer"
+  - id: music
+    category: Music
+    query: "new song"
+  - id: sports
+    category: Sports
+    query: "match highlights"
+  - id: business
+    category: Business & Finance
+    query: "business news"
+  - id: finance
+    category: Business & Finance
+    query: "stock market"
+  - id: education
+    category: Education
+    query: "explained"
+  - id: news
+    category: News & Politics
+    query: "breaking news"
+  - id: lifestyle
+    category: Lifestyle
+    query: "vlog"
+  - id: science
+    category: Science
+    query: "science"
+  - id: cricket
+    category: Sports
+    query: "cricket"
+    regions: [IN, GB, AU]

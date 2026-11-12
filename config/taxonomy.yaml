@@ -1,0 +1,284 @@
+# TrendPulse topic taxonomy.
+#
+# Two levels: category -> topic. Each topic has keyword phrases matched on
+# word boundaries against normalised text. Field weights (title > tags >
+# description/channel) live in the classifier. `youtube_categories` adds a
+# small prior when the video's YouTube categoryId matches.
+#
+# Topic IDs are derived from `id` and are STABLE: renaming `name` never
+# changes the ID, so history is preserved. Never reuse an id for a
+# different concept — retire it with `active: false` instead.
+#
+# YouTube category ids: 1 Film & Animation, 2 Autos, 10 Music, 15 Pets,
+# 17 Sports, 19 Travel, 20 Gaming, 22 People & Blogs, 23 Comedy,
+# 24 Entertainment, 25 News & Politics, 26 Howto & Style, 27 Education,
+# 28 Science & Technology, 29 Nonprofits, 30 Movies, 43 Shows, 44 Trailers
+
+categories:
+  - id: ai
+    name: AI
+    topics:
+      - id: generative_ai
+        name: Generative AI
+        youtube_categories: [28, 27]
+        keywords: [generative ai, genai, chatgpt, gpt-4, gpt-5, gpt 5, openai, gemini ai, google gemini, claude ai, anthropic, midjourney, stable diffusion, sora, llm, large language model, ai video generator, ai image, copilot, deepseek, grok]
+      - id: ai_agents
+        name: AI Agents
+        youtube_categories: [28, 27]
+        keywords: [ai agent, ai agents, agentic, autonomous agent, agentic ai, mcp server, ai automation, n8n]
+      - id: machine_learning
+        name: Machine Learning
+        youtube_categories: [28, 27]
+        keywords: [machine learning, deep learning, neural network, neural networks, data science, transformer model, reinforcement learning, pytorch, tensorflow]
+      - id: robotics
+        name: Robotics
+        youtube_categories: [28]
+        keywords: [robot, robots, robotics, humanoid, boston dynamics, optimus robot, robot dog]
+      - id: ai_general
+        name: AI News & Tools
+        youtube_categories: [28, 25, 27]
+        keywords: [artificial intelligence, ai tools, ai news, ai tool, "a.i.", agi]
+
+  - id: technology
+    name: Technology
+    topics:
+      - id: smartphones
+        name: Smartphones
+        youtube_categories: [28]
+        keywords: [iphone, iphone 17, iphone 18, samsung galaxy, galaxy s25, galaxy s26, pixel 10, smartphone, android phone, oneplus, xiaomi, redmi, vivo, oppo, realme, foldable, phone review]
+      - id: cybersecurity
+        name: Cybersecurity
+        youtube_categories: [28, 27]
+        keywords: [cybersecurity, cyber security, hacker, hackers, hacking, ransomware, data breach, malware, phishing, zero day]
+      - id: cloud_computing
+        name: Cloud Computing
+        youtube_categories: [28, 27]
+        keywords: [cloud computing, aws, azure, google cloud, kubernetes, devops, serverless]
+      - id: pc_hardware
+        name: PC Hardware
+        youtube_categories: [28, 20]
+        keywords: [gpu, nvidia, rtx, geforce, amd, ryzen, radeon, intel core, pc build, gaming pc, graphics card, cpu]
+      - id: consumer_tech
+        name: Consumer Tech & Gadgets
+        youtube_categories: [28]
+        keywords: [unboxing, gadget, gadgets, tech review, smartwatch, apple watch, macbook, ipad, laptop, earbuds, airpods, tesla, electric car, ev]
+      - id: software_dev
+        name: Software Development
+        youtube_categories: [28, 27]
+        keywords: [programming, coding, python, javascript, web development, software engineer, developer, github, react js, leetcode]
+
+  - id: gaming
+    name: Gaming
+    topics:
+      - id: esports
+        name: Esports
+        youtube_categories: [20, 17]
+        keywords: [esports, e-sports, valorant champions, lol worlds, worlds 2026, major, tournament, grand final, bgmi, free fire max, counter-strike, cs2, dota 2, the international]
+      - id: game_releases
+        name: Game Releases & Trailers
+        youtube_categories: [20, 44]
+        keywords: [game trailer, gameplay trailer, reveal trailer, launch trailer, release date, early access, gameplay reveal, announcement trailer, gta 6, gta vi, nintendo direct, state of play, xbox showcase]
+      - id: game_franchises
+        name: Popular Game Franchises
+        youtube_categories: [20]
+        keywords: [minecraft, fortnite, roblox, gta, call of duty, pokemon, pokémon, zelda, elden ring, genshin impact, ea fc, fifa, clash royale, clash of clans, brawl stars, among us]
+      - id: lets_play
+        name: Let's Plays & Walkthroughs
+        youtube_categories: [20]
+        keywords: [gameplay, walkthrough, let's play, lets play, speedrun, playthrough, part 1, ending, boss fight, gaming]
+
+  - id: entertainment
+    name: Entertainment
+    topics:
+      - id: movies
+        name: Movies
+        youtube_categories: [1, 30, 44, 24]
+        keywords: [official trailer, teaser trailer, movie, film, box office, full movie, movie review, marvel, dc studios, pixar, disney, bollywood, tollywood, hollywood, cinema]
+      - id: web_series
+        name: Web Series & TV
+        youtube_categories: [24, 43]
+        keywords: [web series, season 2, season 3, episode, netflix, prime video, disney+, hotstar, jiohotstar, hbo, series, tv show, k-drama, kdrama]
+      - id: celebrity_news
+        name: Celebrity News
+        youtube_categories: [24, 22]
+        keywords: [celebrity, interview, red carpet, gossip, wedding, breakup, podcast, reacts]
+      - id: comedy
+        name: Comedy
+        youtube_categories: [23, 24]
+        keywords: [comedy, funny, prank, stand up, standup, sketch, roast, meme, memes]
+      - id: anime
+        name: Anime
+        youtube_categories: [1, 24]
+        keywords: [anime, manga, one piece, naruto, demon slayer, jujutsu kaisen, dragon ball, crunchyroll]
+      - id: reality_tv
+        name: Reality TV
+        youtube_categories: [24, 43]
+        keywords: [bigg boss, reality show, love island, survivor, got talent, the voice, masterchef, shark tank]
+
+  - id: music
+    name: Music
+    topics:
+      - id: music_videos
+        name: Music Videos & New Releases
+        youtube_categories: [10]
+        keywords: [official music video, official video, music video, official audio, lyric video, lyrics, visualizer, new song, single, album, mv, "m/v", ft, feat]
+      - id: kpop
+        name: K-Pop
+        youtube_categories: [10, 24]
+        keywords: [kpop, k-pop, bts, blackpink, twice, stray kids, newjeans, aespa, seventeen, ive, le sserafim, jungkook, jennie, lisa, rosé, rose]
+      - id: live_performances
+        name: Live Performances
+        youtube_categories: [10, 24]
+        keywords: [live performance, live at, concert, tour, festival, tiny desk, unplugged, acoustic]
+      - id: hiphop
+        name: Hip-Hop & Rap
+        youtube_categories: [10]
+        keywords: [rap, hip hop, hip-hop, rapper, freestyle, cypher, diss track, drill]
+      - id: indian_music
+        name: Indian Music
+        youtube_categories: [10]
+        keywords: [punjabi song, bollywood song, hindi song, tamil song, telugu song, bhojpuri, haryanvi, arijit singh, t-series]
+
+  - id: sports
+    name: Sports
+    topics:
+      - id: cricket
+        name: Cricket
+        youtube_categories: [17]
+        keywords: [cricket, ipl, t20, odi, test match, bcci, virat kohli, rohit sharma, world cup cricket, ashes, wpl]
+      - id: football
+        name: Football (Soccer)
+        youtube_categories: [17]
+        keywords: [football, soccer, premier league, champions league, la liga, bundesliga, ligue 1, serie a, messi, ronaldo, goals, fifa world cup, real madrid, barcelona, manchester united, liverpool, brasileirão]
+      - id: basketball
+        name: Basketball
+        youtube_categories: [17]
+        keywords: [nba, basketball, lebron, curry, wnba]
+      - id: american_football
+        name: American Football
+        youtube_categories: [17]
+        keywords: [nfl, super bowl, touchdown, quarterback, college football]
+      - id: motorsport
+        name: Motorsport
+        youtube_categories: [17, 2]
+        keywords: [f1, formula 1, grand prix, motogp, nascar, verstappen, hamilton]
+      - id: combat_sports
+        name: Combat Sports
+        youtube_categories: [17]
+        keywords: [ufc, boxing, mma, wwe, knockout, fight night]
+      - id: sports_highlights
+        name: Match Highlights
+        youtube_categories: [17]
+        keywords: [highlights, match highlights, extended highlights, full match, post match]
+
+  - id: business_finance
+    name: Business & Finance
+    topics:
+      - id: stock_market
+        name: Stock Market
+        youtube_categories: [25, 27, 22]
+        keywords: [stock market, stocks, share market, nifty, sensex, nasdaq, s&p 500, dow jones, trading, investing, ipo, earnings]
+      - id: crypto
+        name: Crypto
+        youtube_categories: [25, 27, 22]
+        keywords: [bitcoin, crypto, cryptocurrency, ethereum, btc, solana, blockchain, altcoin]
+      - id: personal_finance
+        name: Personal Finance
+        youtube_categories: [27, 22, 26]
+        keywords: [personal finance, mutual fund, sip, tax saving, income tax, budget, credit card, loan, emi, retirement, savings]
+      - id: startups
+        name: Startups & Business
+        youtube_categories: [27, 22, 25]
+        keywords: [startup, startups, entrepreneur, business ideas, founder, unicorn, side hustle, ecommerce]
+      - id: economy
+        name: Economy
+        youtube_categories: [25, 27]
+        keywords: [economy, inflation, recession, gdp, interest rate, federal reserve, rbi, tariff, tariffs]
+
+  - id: education
+    name: Education
+    topics:
+      - id: tutorials
+        name: Tutorials & How-To
+        youtube_categories: [26, 27]
+        keywords: [tutorial, how to, step by step, beginners guide, beginner's guide, tips and tricks, explained, course]
+      - id: exam_prep
+        name: Exam Preparation
+        youtube_categories: [27]
+        keywords: [upsc, jee, neet, ssc, cbse, board exam, exam preparation, gate exam, sat prep, lecture, one shot]
+      - id: language_learning
+        name: Language Learning
+        youtube_categories: [27]
+        keywords: [learn english, english speaking, learn spanish, learn japanese, learn korean, vocabulary, grammar]
+
+  - id: news_politics
+    name: News & Politics
+    topics:
+      - id: elections
+        name: Elections
+        youtube_categories: [25]
+        keywords: [election, elections, vote, voting, campaign, polls, exit poll, candidate]
+      - id: geopolitics
+        name: Geopolitics & World News
+        youtube_categories: [25]
+        keywords: [war, ukraine, russia, israel, gaza, china, nato, united nations, ceasefire, geopolitics, sanctions, military]
+      - id: breaking_news
+        name: Breaking & Live News
+        youtube_categories: [25]
+        keywords: [breaking news, live news, news live, headlines, news update, latest news, live updates]
+      - id: politics
+        name: Politics & Government
+        youtube_categories: [25]
+        keywords: [politics, parliament, congress, senate, prime minister, president, government, minister, trump, modi]
+
+  - id: lifestyle
+    name: Lifestyle
+    topics:
+      - id: food_cooking
+        name: Food & Cooking
+        youtube_categories: [26, 22, 19]
+        keywords: [recipe, cooking, food, street food, mukbang, baking, chef, restaurant, food review]
+      - id: travel
+        name: Travel
+        youtube_categories: [19, 22]
+        keywords: [travel, travel vlog, trip, tour guide, things to do, backpacking, road trip]
+      - id: fitness
+        name: Fitness & Wellness
+        youtube_categories: [26, 17, 22]
+        keywords: [workout, fitness, gym, yoga, weight loss, home workout, bodybuilding, running]
+      - id: fashion_beauty
+        name: Fashion & Beauty
+        youtube_categories: [26, 22]
+        keywords: [makeup, skincare, fashion, outfit, haul, beauty, hairstyle, grwm, get ready with me]
+      - id: vlogs
+        name: Vlogs & Daily Life
+        youtube_categories: [22]
+        keywords: [vlog, day in my life, daily vlog, family vlog, my life, challenge, 24 hours]
+      - id: autos
+        name: Cars & Autos
+        youtube_categories: [2]
+        keywords: [car review, supercar, car, cars, bike review, motorcycle, drive, test drive, modified]
+      - id: pets_animals
+        name: Pets & Animals
+        youtube_categories: [15]
+        keywords: [dog, dogs, cat, cats, puppy, kitten, pet, pets, animals, wildlife]
+
+  - id: science
+    name: Science
+    topics:
+      - id: space
+        name: Space & Astronomy
+        youtube_categories: [28, 27]
+        keywords: [space, nasa, isro, spacex, starship, rocket launch, astronomy, black hole, galaxy, mars, moon mission, james webb]
+      - id: climate
+        name: Climate & Environment
+        youtube_categories: [28, 27, 25]
+        keywords: [climate change, global warming, environment, renewable energy, solar energy, hurricane, cyclone, earthquake, flood, wildfire]
+      - id: physics_science
+        name: Physics & Science Explainers
+        youtube_categories: [28, 27]
+        keywords: [physics, quantum, chemistry, biology, experiment, science explained, scientists, research, discovery]
+      - id: health_science
+        name: Health & Medicine
+        youtube_categories: [27, 28, 26]
+        keywords: [health, medicine, doctor, disease, vaccine, nutrition, sleep, brain, mental health]

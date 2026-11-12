@@ -1,0 +1,117 @@
+# TrendPulse pipeline configuration. Every value can be overridden with an
+# environment variable of the form TRENDPULSE__SECTION__KEY (double underscores),
+# e.g. TRENDPULSE__QUOTA__DAILY_BUDGET=5000.
+
+schedule:
+  # Target polling interval. GitHub Actions cron is best-effort; the
+  # dashboard's freshness indicator uses this value to judge staleness.
+  interval_minutes: 30
+
+quota:
+  # YouTube Data API v3 default project quota is 10,000 units/day and resets
+  # at midnight America/Los_Angeles. We stop safely below it.
+  daily_limit: 10000
+  daily_budget: 9000
+  # Units reserved for metric refreshes (videos.list) so search can never
+  # starve the cheap, high-value refresh calls.
+  refresh_reserve: 600
+  timezone: America/Los_Angeles
+
+ingestion:
+  chart_max_results: 50          # per (region, category) chart page
+  chart_pages: 1                 # pages per chart (each page = 1 unit)
+  search_enabled: true
+  search_interval_minutes: 180   # run topic discovery at most this often
+  searches_per_cycle: 6          # search.list calls per discovery cycle
+  search_max_results: 25
+  search_published_within_hours: 72
+  track_search_videos_hours: 72  # refresh search-discovered videos for this long
+  max_tracked_videos: 1500       # hard cap on refresh set (30 videos.list calls)
+  request_timeout_seconds: 20
+  max_retries: 4
+  backoff_base_seconds: 1.0
+  backoff_max_seconds: 30.0
+  min_seconds_between_requests: 0.05
+
+topics:
+  min_confidence: 0.5            # assign taxonomy topic at/above this
+  review_confidence: 0.25        # below min, at/above this -> needs review
+  max_topics_per_video: 3
+  confidence_saturation: 4.0     # keyword score that maps to confidence 1.0
+  discovery:
+    enabled: true
+    ngram_min: 1
+    ngram_max: 3
+    min_videos: 3                # phrase must appear in >= N videos in the run
+    min_channels: 2              # ...from >= N distinct channels
+    max_new_topics_per_run: 40
+    similarity_threshold: 0.88   # char-ngram cosine to merge into an existing topic
+    max_doc_fraction: 0.25       # ignore phrases present in > 25% of videos
+
+scoring:
+  # popularity_score = w_videos*ln(1+video_count) + w_channels*ln(1+channel_count)
+  #                  + w_vph*log10(1+views_per_hour) + w_engagement*(avg_engagement_rate*100)
+  w_videos: 20.0
+  w_channels: 10.0
+  w_vph: 8.0
+  w_engagement: 1.0
+
+lifecycle:
+  min_platform_history_hours: 6  # before this, topics are "baseline"
+  emerging_hours: 24             # first observed within this window
+  lookback_window: 24h           # window used for growth-based states
+  growth_threshold_pct: 15.0
+  decline_threshold_pct: 15.0
+  peak_ratio: 0.9                # score >= ratio * 7d max => near peak
+  decline_from_peak_ratio: 0.6   # score < ratio * 7d max (and not growing) => declining
+  dormant_hours: 24              # not observed for this long => dormant
+
+windows:
+  "30m": 30
+  "1h": 60
+  "6h": 360
+  "24h": 1440
+  "7d": 10080
+  "30d": 43200
+  # snapshot lookup tolerance as a fraction of the window
+  tolerance_fraction: 0.5
+
+quality:
+  # A record-level check fails the gate if the failed fraction exceeds this.
+  critical_failure_ratio: 0.2
+  volume_lookback_runs: 12
+  volume_warning_change: 0.5     # +/-50% vs median => WARNING
+  volume_failure_drop: 0.9       # >90% drop vs median => FAIL
+  stale_after_minutes: 120
+  max_future_skew_minutes: 60
+  # Per-check overrides, e.g. downgrade or disable a check:
+  checks:
+    invalid_category: {enabled: true, severity: warning}
+    duplicate_observations: {enabled: true, severity: warning}
+
+# Sized for the Supabase free tier (500 MB) AND the YouTube API Developer Policies.
+# Policies: non-statistical API data (titles, descriptions, channel names) must be refreshed or
+# deleted within 30 days; storing statistics / derived metrics for longer (up to 36 months)
+# requires accepting the "Analytics & Reporting" policy amendment for your API project.
+# Defaults below assume that amendment for TOPIC-level derived metrics only; set
+# topic_obs_max_days: 30 if you have not accepted it. See docs/api_quota_strategy.md#compliance.
+retention:
+  bronze_days: 2                 # raw payload replay window
+  silver_days: 1
+  api_log_days: 30
+  api_metadata_max_days: 30      # delete video/channel metadata not refreshed for this long
+  quarantine_days: 30            # quarantined payloads contain API metadata
+  video_obs_full_days: 1         # then keep the last run of each UTC day
+  video_obs_max_days: 30         # video-level statistics history
+  topic_obs_full_days: 3         # then keep the last run of each UTC hour ...
+  topic_obs_hourly_days: 14      # ... until here, then the last run of each UTC day
+  topic_obs_max_days: 400        # TrendPulse-derived topic metrics (< 36 months)
+  pipeline_history_days: 90
+
+lock:
+  ttl_minutes: 50
+
+alerts:
+  on_failure: true
+  on_dq_warning: false
+  on_recovery: true
