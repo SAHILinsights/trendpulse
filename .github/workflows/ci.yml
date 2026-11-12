@@ -71,9 +71,20 @@ jobs:
       - name: Migration DDL applies to PostgreSQL
         env:
           PGPASSWORD: tp
-        run: psql -h localhost -U tp -d tp_test -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS trendpulse CASCADE" -f migrations/001_initial_schema.sql
-      - name: End-to-end smoke (offline simulator, 6 cycles)
+        run: |
+          psql -h localhost -U tp -d tp_test -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS trendpulse CASCADE" \
+            -f migrations/001_initial_schema.sql -f migrations/002_pipeline_log_records.sql
+          sed 's/CHANGE_ME_INGEST_PASSWORD/ci-ingest/; s/CHANGE_ME_READER_PASSWORD/ci-reader/' migrations/roles.sql \
+            | psql -h localhost -U tp -d tp_test -v ON_ERROR_STOP=1
+      - name: End-to-end smoke (offline simulator with fault injection, 36 cycles)
         env:
           TRENDPULSE_DATA_DIR: ${{ runner.temp }}/tp
           TRENDPULSE__INGESTION__MIN_SECONDS_BETWEEN_REQUESTS: "0"
-        run: trendpulse simulate --cycles 6 --interval 30 && trendpulse status
+          TRENDPULSE__INGESTION__BACKOFF_BASE_SECONDS: "0.01"
+        run: trendpulse simulate --cycles 36 --interval 30 --chaos && trendpulse status
+      - name: Live ingestion stays disabled without compliance approval
+        env:
+          TRENDPULSE_DATA_DIR: ${{ runner.temp }}/tp-live
+        run: |
+          trendpulse run | tee run.json
+          grep -q '"status": "skipped"' run.json

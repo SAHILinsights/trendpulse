@@ -17,11 +17,12 @@ def _line(df, x, ys: list[tuple[str, str]], tz: str, ytitle: str, height: int = 
     return ui.style_fig(fig, height, legend=len(ys) > 1, ytitle=ytitle)
 
 
-def render() -> None:
+def render(embedded: bool = False) -> None:
     tz = st.session_state.get("tz", "UTC")
-    ui.hero("Topic Intelligence", "Deep dive into one topic's history, reach and drivers")
-    if not guard():
-        return
+    if not embedded:
+        ui.hero("Topic Intelligence", "Deep dive into one topic's history, reach and drivers")
+        if not guard():
+            return
     glob = q("trending", "GLOBAL")
     topics = q("topics")
     if topics.empty:

@@ -73,3 +73,23 @@ def data_mode(health: dict | None, error: str | None = None) -> DataMode:
 
 def now() -> datetime:
     return utcnow()
+
+
+_OPS_WITH_SETTINGS = {"active_conditions", "freshness_by_region"}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def qo(name: str, *args, **kwargs):
+    """Cached call of ``trendpulse.dashboard.ops.<name>(wh, *args)`` (read-only control-plane queries)."""
+    from trendpulse.dashboard import ops
+
+    wh = get_wh()
+    fn = getattr(ops, name)
+    if name in _OPS_WITH_SETTINGS:
+        return fn(wh, *args, settings=get_settings(), **kwargs)
+    return fn(wh, *args, **kwargs)
+
+
+def operator_config() -> tuple[str | None, str | None, str | None]:
+    return (secret("TRENDPULSE_GITHUB_DISPATCH_TOKEN"), secret("TRENDPULSE_GITHUB_REPO"),
+            secret("TRENDPULSE_OPERATOR_PASSPHRASE"))

@@ -37,3 +37,15 @@ trendpulse retention                    # apply retention/compaction now
 trendpulse export-parquet --out data/lake/gold   # Gold -> Parquet + DuckDB views
 TRENDPULSE_LOG_LEVEL=DEBUG trendpulse run --sample
 ```
+
+## Control plane
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Every run is `skipped` with "live YouTube ingestion is disabled pending data-source compliance approval" | Compliance switch off (default) | Expected until approval — see docs/data_source_compliance.md |
+| Run `failed` at `load_configuration`: "compliance_approval_reference is empty" | Switch on without a recorded approval | Set `TRENDPULSE_COMPLIANCE_APPROVAL_REFERENCE` |
+| Orchestrator shows a stage as `interrupted` | Run was abandoned (process killed) while in that stage | Execution History → Reconcile/Replay (if Bronze retained) |
+| "No log records for this stage" | Run predates schema v2, or the stage was skipped | — |
+| Lakehouse shows Bronze rows but samples have no payload | By design: reader has metadata-only column grant | Inspect raw payloads with the ingest role via SQL if needed |
+| Recovery buttons disabled | Not signed in as operator, dispatch secrets missing, or action unsupported for this run | Hover the button / read the reason column; use the CLI equivalent shown |
+| Operator sign-in locked | 5 wrong passphrases | Wait 15 minutes (per session) |

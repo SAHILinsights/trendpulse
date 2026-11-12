@@ -113,6 +113,36 @@ RECORD_CHECKS: list[RecordCheck] = [
 ]
 
 
+# Dataset-level checks (implemented below as functions; described here for the catalog).
+DATASET_CHECKS: list[dict[str, str]] = [
+    {"name": "schema_drift", "severity": "critical", "action": "gate", "stage": "validate_schema",
+     "description": "Required payload paths missing in > critical ratio → FAIL; any missing path or unexpected "
+                    "top-level field → WARNING"},
+    {"name": "stale_data", "severity": "critical", "action": "gate", "stage": "data_quality",
+     "description": "Newest observation older than stale_after_minutes or empty batch → FAIL; long gap since "
+                    "previous success → WARNING"},
+    {"name": "volume_anomaly", "severity": "critical", "action": "gate", "stage": "data_quality",
+     "description": "Record count vs median of recent successful runs: drop > volume_failure_drop → FAIL, "
+                    "change ≥ volume_warning_change → WARNING"},
+    {"name": "missing_topic_ids", "severity": "critical", "action": "gate", "stage": "data_quality",
+     "description": "Every valid video must have a countable topic assignment"},
+]
+
+
+def check_catalog() -> list[dict[str, str]]:
+    """All 14 checks with level, default severity, action and the stage that runs them."""
+    rec = [{"name": c.name, "level": "record", "severity": c.severity, "action": c.action,
+            "stage": "transform_silver", "description": c.description} for c in RECORD_CHECKS]
+    return rec + [{**c, "level": "dataset"} for c in DATASET_CHECKS]
+
+
+GATE_POLICY = {
+    PASS: "Downstream Gold publication allowed.",
+    WARNING: "Publication allowed; warnings recorded in dq_results and failing rows quarantined.",
+    FAIL: "Gold publication blocked; previous snapshot keeps serving; quarantine and audit still written.",
+}
+
+
 def _check_cfg(settings: Settings, name: str, default_sev: str) -> tuple[bool, str]:
     c = settings.pipeline.quality.checks.get(name, {}) or {}
     return bool(c.get("enabled", True)), c.get("severity", default_sev)

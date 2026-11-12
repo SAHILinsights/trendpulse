@@ -1,4 +1,4 @@
--- TrendPulse migration 002: least-privilege database roles.
+-- TrendPulse least-privilege database roles (manual, not versioned: contains passwords).
 -- Run ONCE, by hand, as the `postgres` user in the Supabase SQL editor
 -- (it contains passwords, so it is not applied by the pipeline).
 -- 1. Replace both CHANGE_ME_* values with long random passwords
@@ -41,6 +41,9 @@ GRANT SELECT ON ALL TABLES IN SCHEMA trendpulse TO trendpulse_reader;
 ALTER DEFAULT PRIVILEGES FOR ROLE trendpulse_ingest IN SCHEMA trendpulse GRANT SELECT ON TABLES TO trendpulse_reader;
 ALTER ROLE trendpulse_reader SET default_transaction_read_only = on;
 ALTER ROLE trendpulse_reader SET statement_timeout = '30s';
--- The raw Bronze payloads and quarantine payloads are not needed by the dashboard UI beyond the
--- quarantine table; revoke Bronze to keep the public surface minimal.
+-- Bronze: the control plane may read lineage METADATA (ids, endpoint, region, checksum, size,
+-- timestamps) but never the raw payload column.
 REVOKE SELECT ON trendpulse.bronze_api_responses FROM trendpulse_reader;
+GRANT SELECT (response_id, run_id, endpoint, discovery_method, discovery_query, region_code, category_id,
+              page_index, request_params, http_status, item_count, payload_sha256, fetched_at)
+  ON trendpulse.bronze_api_responses TO trendpulse_reader;

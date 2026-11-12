@@ -20,6 +20,7 @@ Guarantees
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
@@ -44,7 +45,7 @@ from trendpulse.ingestion.discovery import (
 )
 from trendpulse.ingestion.quota import QuotaTracker, units_used_today
 from trendpulse.ingestion.youtube_client import YouTubeClient
-from trendpulse.logging_utils import get_logger, set_context
+from trendpulse.logging_utils import RunLogCollector, get_logger, set_context
 from trendpulse.monitoring.alerts import send_alert
 from trendpulse.quality.framework import (
     FAIL,
@@ -213,15 +214,37 @@ class Pipeline:
             ("publish_gold", lambda: self._publish_gold(st), 2),
             ("generate_gold_aggregates", lambda: self._verify_gold(st), 0),
         ]
-        self._record_stage(st, "start_execution", order, utcnow(), "success", 1, None, None, None)
+        collector = RunLogCollector(st.run_id, clock=lambda: self._now(st))
+        tp_logger = logging.getLogger("trendpulse")
+        prev_level = tp_logger.level
+        if tp_logger.getEffectiveLevel() > logging.INFO:
+            tp_logger.setLevel(logging.INFO)
+        tp_logger.addHandler(collector)
+        self._log_collector = collector
+        try:
+            self._execute_stages(st, api_key, force_search, replay, order, ingest_stages, process_stages)
+        finally:
+            self._flush_logs()
+            tp_logger.removeHandler(collector)
+            tp_logger.setLevel(prev_level)
+            self._log_collector = None
+
+    def _execute_stages(self, st, api_key, force_search, replay, order, ingest_stages, process_stages) -> None:
+        self._record_stage(st, "start_execution", order, self._now(st), "success", 1, None, None, None)
         plan = ([("load_configuration", ingest_stages[0][1], 1)] if replay else ingest_stages) + process_stages
         failed = False
         for name, fn, retries in plan:
-            if failed or (st.skipped_reason and name not in {"load_configuration", "check_quota_budget"}):
-                self._record_stage(st, name, order, utcnow(), "skipped", 0, None, None, st.skipped_reason)
+            # A closed quality gate still persists its quarantine (so the rejected rows can be inspected);
+            # everything downstream of the gate (Gold) stays skipped.
+            gate_quarantine = name == "quarantine_records" and st.status == "dq_failed"
+            if (failed and not gate_quarantine) or (
+                    st.skipped_reason and name not in {"load_configuration", "check_quota_budget"}):
+                self._record_stage(st, name, order, self._now(st), "skipped", 0, None, None, st.skipped_reason)
                 continue
             try:
                 self._run_stage(st, name, fn, retries, order)
+                if gate_quarantine:
+                    continue
             except QualityGateFailed as exc:
                 st.status, st.error, failed = "dq_failed", str(exc), True
             except StageFailed as exc:
@@ -243,7 +266,7 @@ class Pipeline:
 
     def _run_stage(self, st: RunState, name: str, fn: Callable[[], Any], retries: int, order: dict) -> None:
         set_context(stage=name)
-        started = utcnow()
+        started = self._now(st)
         t0 = time.monotonic()
         attempts = 0
         while True:
@@ -276,11 +299,22 @@ class Pipeline:
     # ================================================================ stages
     def _load_configuration(self, st: RunState) -> dict:
         p = self.settings.pipeline
+        yt = p.sources.youtube
+        if st.data_source == "youtube_api" and not st.replay:
+            if not yt.live_ingestion_enabled:
+                st.skipped_reason = ("live YouTube ingestion is disabled pending data-source compliance approval "
+                                     "(sources.youtube.live_ingestion_enabled=false; see docs/data_source_compliance.md)")
+                return {"_status": "skipped", "note": st.skipped_reason}
+            if not yt.compliance_approval_reference.strip():
+                raise RuntimeError("sources.youtube.live_ingestion_enabled is true but "
+                                   "compliance_approval_reference is empty — record the approval before enabling")
         return {"note": f"{len(self.settings.region_codes)} regions, {len(self.settings.seeds.seeds)} seeds, "
                         f"{sum(len(c.topics) for c in self.settings.taxonomy.categories)} taxonomy topics, "
                         f"budget {p.quota.daily_budget}/day"}
 
     def _check_quota(self, st: RunState, api_key: str | None) -> dict:
+        if st.skipped_reason:
+            return {"_status": "skipped", "note": st.skipped_reason}
         used = units_used_today(self.wh, st.now, self.settings.pipeline.quota.timezone)
         st.quota = QuotaTracker(self.settings.pipeline.quota, used_before_run=used)
         if st.data_source != "sample_fixture" and not api_key:
@@ -461,6 +495,16 @@ class Pipeline:
                 "_status": "success" if sent else "skipped"}
 
     # ================================================================ persistence helpers
+    def _now(self, st: RunState) -> datetime:
+        """Execution-clock timestamp: run start + real elapsed time.
+
+        Identical to wall-clock for live runs; keeps simulated runs internally coherent; replays
+        use wall-clock (they really execute now).
+        """
+        if st.replay:
+            return utcnow()
+        return st.now + (utcnow() - self._real_start)
+
     def _log_request(self, st: RunState, r: dict) -> None:
         st.api_log_buffer.append({
             "run_id": st.run_id, "endpoint": r["endpoint"], "region_code": r.get("region_code"),
@@ -468,7 +512,7 @@ class Pipeline:
             "http_status": r["http_status"], "quota_cost": r["quota_cost"], "items_returned": r["items_returned"],
             "duration_ms": r["duration_ms"], "attempt": r["attempt"],
             # run clock + real elapsed time (identical to wall-clock for live runs; keeps simulations coherent)
-            "requested_at": st.now + (utcnow() - self._real_start), "error": r["error"]})
+            "requested_at": self._now(st), "error": r["error"]})
 
     def _flush_api_log(self, st: RunState) -> None:
         if st.api_log_buffer:
@@ -485,7 +529,7 @@ class Pipeline:
     def _record_stage(self, st: RunState, name: str, order: dict, started: datetime, status: str, attempts: int,
                       rin, rout, note, duration_ms: int | None = None) -> None:
         row = {"run_id": st.run_id, "stage": name, "stage_order": order.get(name, 99), "status": status,
-               "started_at": started, "finished_at": utcnow(), "duration_ms": duration_ms or 0,
+               "started_at": started, "finished_at": self._now(st), "duration_ms": duration_ms or 0,
                "records_in": rin, "records_out": rout, "attempts": attempts,
                "error": (str(note)[:2000] if note else None)}
         st.stage_log.append(row)
@@ -494,15 +538,29 @@ class Pipeline:
                 self.wh.upsert(conn, s.pipeline_stage_runs, [row], ["run_id", "stage"])
         except Exception:  # noqa: BLE001 - never let bookkeeping kill the run
             log.exception("could not persist stage record %s", name)
+        self._flush_logs()
+
+    def _flush_logs(self) -> None:
+        collector = getattr(self, "_log_collector", None)
+        if collector is None:
+            return
+        rows = collector.drain()
+        if not rows:
+            return
+        try:
+            with self.wh.begin() as conn:
+                self.wh.insert_many(conn, s.pipeline_log_records, rows)
+        except Exception:  # noqa: BLE001 - logging persistence must never fail a run
+            collector.buffer[:0] = rows[-1000:]
 
     def _update_run(self, st: RunState) -> None:
         res = self._result(st)
-        finished = utcnow()
+        finished = self._now(st)
         with self.wh.begin() as conn:
             conn.execute(update(s.pipeline_runs).where(s.pipeline_runs.c.run_id == st.run_id).values(
                 status=st.status, finished_at=finished,
                 # wall-clock execution time (st.now may be a simulated clock)
-                duration_seconds=max(0.0, (finished - self._real_start).total_seconds()),
+                duration_seconds=max(0.0, (utcnow() - self._real_start).total_seconds()),
                 records_bronze=res.counts["bronze_responses"], records_silver=res.counts["silver_valid"],
                 records_quarantined=res.counts["quarantined"], records_gold=res.counts["gold_rows"],
                 videos_observed=res.counts["videos"], topics_observed=res.counts["topics"],

@@ -15,8 +15,27 @@ from trendpulse.storage.retention import apply_retention
 
 
 def test_migrations_are_idempotent(wh):
+    from sqlalchemy import inspect
     assert migrate(wh) == []
-    assert current_version(wh) == 1
+    assert current_version(wh) == 2
+    tables = inspect(wh.engine).get_table_names(schema="trendpulse" if wh.is_postgres else None)
+    assert "pipeline_log_records" in tables
+
+
+def test_v1_database_upgrades_additively(tmp_path):
+    """A warehouse created by the baseline (schema v1 only) gains v2 without touching existing data."""
+    from sqlalchemy import inspect
+
+    from trendpulse.storage.migrations import MIGRATIONS, _ensure_migrations_table
+    w = Warehouse(f"sqlite:///{tmp_path / 'v1.db'}")
+    _ensure_migrations_table(w)
+    with w.begin() as c:
+        MIGRATIONS[0].apply(c, w)
+        c.execute(s.schema_migrations.insert().values(version=1, description="v1", applied_at=NOW))
+        w.upsert(c, s.discovery_state, [{"key": "k", "value": "keep", "updated_at": NOW}], ["key"])
+    assert "pipeline_log_records" not in inspect(w.engine).get_table_names()
+    assert migrate(w) == [2]
+    assert w.get_state("k") == "keep" and "pipeline_log_records" in inspect(w.engine).get_table_names()
 
 
 def test_url_normalisation():

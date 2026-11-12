@@ -111,6 +111,17 @@ retention:
 lock:
   ttl_minutes: 50
 
+# Data-source authorisation. Live YouTube ingestion stays OFF until the intended use case
+# (cross-channel aggregation + derived metrics + stored statistics) has been approved under the
+# YouTube API "Analytics & Reporting" policy amendment, or Google has confirmed it in writing.
+# Enabling requires a non-empty approval reference (ticket id / email date) for the audit trail.
+# Runs attempted while disabled are recorded as `skipped` with the reason. Sample/simulator
+# runs are unaffected. See docs/data_source_compliance.md.
+sources:
+  youtube:
+    live_ingestion_enabled: false
+    compliance_approval_reference: ""
+
 alerts:
   on_failure: true
   on_dq_warning: false

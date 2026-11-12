@@ -1,4 +1,11 @@
-"""TrendPulse Streamlit application (entry: ``streamlit run streamlit_app.py``)."""
+"""TrendPulse control plane (entry: ``streamlit run streamlit_app.py``).
+
+Information architecture — the pipeline is the product, the dashboard is its control room:
+
+  Platform        Overview · Pipeline Orchestrator · Data Lakehouse · Data Quality & Governance ·
+                  Lineage & Observability · Execution History & Recovery
+  Consumption     Trend Intelligence (Gold data products)
+"""
 
 from __future__ import annotations
 
@@ -9,34 +16,55 @@ from trendpulse.dashboard.runtime import data_mode, get_wh, q
 
 TIMEZONES = ["UTC", "Asia/Kolkata", "America/New_York", "America/Los_Angeles", "Europe/London", "Europe/Berlin",
              "Asia/Tokyo", "Asia/Seoul", "America/Sao_Paulo", "Australia/Sydney"]
+PRODUCT = "TrendPulse"
+SUBTITLE = "Real-Time Data Engineering & Intelligence Platform"
+
+
+def _environment() -> dict:
+    from trendpulse.settings import get_settings
+    from trendpulse.storage.migrations import current_version
+
+    env = {"warehouse": "—", "schema": "—", "live": get_settings().pipeline.sources.youtube.live_ingestion_enabled}
+    wh = get_wh()
+    if wh is not None:
+        env["warehouse"] = "PostgreSQL" if wh.is_postgres else "SQLite (local)"
+        try:
+            env["schema"] = f"v{current_version(wh)}"
+        except Exception:  # noqa: BLE001
+            env["schema"] = "?"
+    return env
 
 
 def _sidebar(health: dict | None, mode) -> None:
     with st.sidebar:
         st.markdown(
-            "<div style='display:flex;align-items:center;gap:10px;margin:4px 0 14px 0'>"
-            "<div style='width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#3987e5,#9085e9);"
-            "display:flex;align-items:center;justify-content:center;font-weight:800;color:white'>TP</div>"
-            "<div><div style='font-weight:700;font-size:1.05rem;color:#e6eaf2'>TrendPulse</div>"
-            "<div style='font-size:.72rem;color:#6b7a93'>YouTube Trending Intelligence</div></div></div>",
+            f"<div style='display:flex;align-items:center;gap:10px;margin:2px 0 4px 0'>"
+            f"<div style='width:30px;height:30px;border-radius:6px;background:{ui.ACCENT};display:flex;"
+            f"align-items:center;justify-content:center;font-weight:800;color:{ui.BG};font-size:.8rem'>TP</div>"
+            f"<div><div style='font-weight:700;font-size:1rem;color:{ui.TEXT}'>{PRODUCT}</div>"
+            f"<div style='font-size:.68rem;color:{ui.MUTED};line-height:1.2'>{SUBTITLE}</div></div></div>",
             unsafe_allow_html=True)
+
+
+def _sidebar_footer(health: dict | None, mode) -> None:
+    env = _environment()
+    with st.sidebar:
+        st.markdown("<hr style='margin:8px 0;border-color:#273449'>", unsafe_allow_html=True)
         st.session_state.setdefault("tz", "UTC")
         st.selectbox("Display timezone", TIMEZONES, key="tz")
-        role = {"live": "good", "historical": "warning", "sample": "serious", "empty": "warning",
+        role = {"live": "good", "historical": "warning", "sample": "serious", "empty": "idle",
                 "error": "critical"}[mode.key]
-        st.markdown(ui.badge(mode.label, ui.STATUS[role], "●"), unsafe_allow_html=True)
-        if health:
-            st.markdown(
-                f"<div class='tp-caption' style='margin-top:8px'>Snapshot: {ui.fmt_ts(health.get('snapshot_at'), st.session_state.tz)}"
-                f"<br>Freshness: <b>{health.get('freshness')}</b> ({ui.fmt_age(health.get('freshness_minutes'))})"
-                f"<br>Target cadence: every {health.get('interval_minutes')} min</div>", unsafe_allow_html=True)
-        st.markdown("<div class='tp-caption' style='margin-top:18px'>Data: YouTube Data API v3 regional "
-                    "popular charts + topic search. Topics are inferred by TrendPulse, not provided by YouTube."
-                    "</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='tp-caption' style='line-height:1.9'>Data mode&nbsp; {ui.badge(mode.label, ui.STATUS[role])}"
+            f"<br>Warehouse&nbsp; <span class='tp-mono'>{env['warehouse']} · schema {env['schema']}</span>"
+            f"<br>Live YouTube ingestion&nbsp; "
+            f"{ui.badge('enabled', ui.OK) if env['live'] else ui.badge('disabled · compliance', ui.WARN)}"
+            + (f"<br>Snapshot&nbsp; <span class='tp-mono'>{ui.fmt_ts(health.get('snapshot_at'), st.session_state.tz)}"
+               f"</span>" if health else "") + "</div>", unsafe_allow_html=True)
 
 
 def main() -> None:
-    st.set_page_config(page_title="TrendPulse — YouTube Trending Intelligence", page_icon="📈", layout="wide",
+    st.set_page_config(page_title=f"{PRODUCT} — Data Engineering Control Plane", page_icon="◆", layout="wide",
                        initial_sidebar_state="expanded")
     ui.inject_css()
     error = None
@@ -53,37 +81,44 @@ def main() -> None:
     _sidebar(health, mode)
 
     from trendpulse.dashboard.views import (
-        channels,
         control_center,
-        discovery,
-        overview,
-        regional,
-        topic,
-        videos,
+        executions,
+        intelligence,
+        lakehouse,
+        lineage,
+        orchestrator,
+        platform,
+        quality,
     )
 
     pages = {
-        "Intelligence": [
-            st.Page(overview.render, title="Global Overview", icon=":material/public:", url_path="overview",
-                    default=True),
-            st.Page(discovery.render, title="Trend Discovery", icon=":material/trending_up:", url_path="discovery"),
-            st.Page(topic.render, title="Topic Intelligence", icon=":material/hub:", url_path="topic"),
-            st.Page(regional.render, title="Regional Intelligence", icon=":material/language:", url_path="regional"),
-            st.Page(channels.render, title="Channel Intelligence", icon=":material/subscriptions:",
-                    url_path="channels"),
-            st.Page(videos.render, title="Video Explorer", icon=":material/smart_display:", url_path="videos"),
-        ],
         "Platform": [
-            st.Page(control_center.render, title="Data Engineering Control Center", icon=":material/monitoring:",
-                    url_path="control-center"),
+            st.Page(platform.render, title="Platform Overview", icon=":material/monitor_heart:", url_path="overview",
+                    default=True),
+            st.Page(orchestrator.render, title="Pipeline Orchestrator", icon=":material/account_tree:",
+                    url_path="orchestrator"),
+            st.Page(lakehouse.render, title="Data Lakehouse", icon=":material/database:", url_path="lakehouse"),
+            st.Page(quality.render, title="Data Quality & Governance", icon=":material/verified:",
+                    url_path="quality"),
+            st.Page(lineage.render, title="Lineage & Observability", icon=":material/hub:", url_path="lineage"),
+            st.Page(executions.render, title="Execution History & Recovery", icon=":material/history:",
+                    url_path="executions"),
+        ],
+        "Consumption": [
+            st.Page(intelligence.render, title="Trend Intelligence", icon=":material/trending_up:",
+                    url_path="intelligence"),
+            # previous single-page control center, kept reachable for comparison (not in navigation)
+            st.Page(control_center.render, title="Legacy control center", url_path="legacy-control-center",
+                    visibility="hidden"),
         ],
     }
     nav = st.navigation(pages)
+    _sidebar_footer(health, mode)
     nav.run()
 
 
 def guard() -> bool:
-    """Shared page preamble: banners for sample/empty/error states. Returns False if the page can't render."""
+    """Preamble for data-product pages: banners for sample/empty/error states."""
     mode = st.session_state.get("data_mode")
     if mode is None:
         return False
@@ -91,16 +126,37 @@ def guard() -> bool:
         ui.banner(f"Cannot reach the warehouse. {ui.esc(mode.detail)}", "critical", "✕")
         return False
     if mode.key == "empty":
-        ui.empty_state("No published data yet",
-                       "Initialise the platform: set <code>YOUTUBE_API_KEY</code> and <code>DATABASE_URL</code>, "
-                       "then run <code>trendpulse run</code> (or trigger the <b>Scheduled ingestion</b> GitHub "
-                       "workflow). For an offline demo: <code>trendpulse simulate --cycles 96</code>.")
+        ui.empty_state("No published data yet", INIT_HELP)
         return False
+    mode_banner(mode)
+    return True
+
+
+INIT_HELP = ("Initialise the platform: <code>trendpulse migrate</code>, then <code>trendpulse run</code> "
+             "(live ingestion must be approved — see docs/data_source_compliance.md) or, for an offline demo, "
+             "<code>trendpulse simulate --cycles 96 --chaos</code>.")
+
+
+def mode_banner(mode) -> None:
     if mode.key == "sample":
-        ui.banner("<b>SAMPLE DATA.</b> Everything on this page comes from TrendPulse's offline API simulator "
-                  "(fictional videos, channels and topics) — it demonstrates the pipeline, not real YouTube trends.",
-                  "serious", "!")
+        ui.banner("<b>SAMPLE DATA</b> — observations come from TrendPulse's offline API simulator (fictional "
+                  "videos/channels; some runs include deliberate fault injection). Execution metadata, quality "
+                  "audits and logs are real records of those runs.", "serious", "!")
     elif mode.key == "historical":
-        ui.banner("The latest successful pipeline run is older than expected — figures below are historical, "
-                  "not current. See the Control Center for run status.", "warning", "!")
+        ui.banner("No successful run recently — figures are historical, not current.", "warning", "!")
+
+
+def engineering_guard(title: str, subtitle: str, crumb: str = "Platform", right_html: str = "") -> bool:
+    """Preamble for engineering modules (renders the header; returns False on empty/error state)."""
+    ui.hero(title, subtitle, right_html, crumb)
+    mode = st.session_state.get("data_mode")
+    if mode is None:
+        return False
+    if mode.key == "error":
+        ui.banner(f"Cannot reach the warehouse. {ui.esc(mode.detail)}", "critical", "✕")
+        return False
+    if mode.key == "empty" and not (st.session_state.get("health") or {}).get("last_attempt"):
+        ui.empty_state("Platform not initialized", "No pipeline execution has been recorded. " + INIT_HELP)
+        return False
+    mode_banner(mode)
     return True

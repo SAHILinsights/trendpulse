@@ -7,7 +7,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: trendpulse
-      POSTGRES_PASSWORD: trendpulse-local-only
+      POSTGRES_PASSWORD: ${LOCAL_PG_PASSWORD:-trendpulse-local-only}
       POSTGRES_DB: trendpulse
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
@@ -19,7 +19,7 @@ services:
     build: .
     command: ["trendpulse", "run"]
     environment:
-      DATABASE_URL: postgresql://trendpulse:trendpulse-local-only@db:5432/trendpulse
+      DATABASE_URL: postgresql://trendpulse:${LOCAL_PG_PASSWORD:-trendpulse-local-only}@db:5432/trendpulse
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
     depends_on:
       db: {condition: service_healthy}
@@ -27,7 +27,7 @@ services:
   dashboard:
     build: .
     environment:
-      DASHBOARD_DATABASE_URL: postgresql://trendpulse:trendpulse-local-only@db:5432/trendpulse
+      DASHBOARD_DATABASE_URL: postgresql://trendpulse:${LOCAL_PG_PASSWORD:-trendpulse-local-only}@db:5432/trendpulse
     ports: ["8501:8501"]
     depends_on:
       db: {condition: service_healthy}

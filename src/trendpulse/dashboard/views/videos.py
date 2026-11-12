@@ -8,11 +8,12 @@ from trendpulse.dashboard.app import guard
 from trendpulse.dashboard.runtime import q
 
 
-def render() -> None:
+def render(embedded: bool = False) -> None:
     tz = st.session_state.get("tz", "UTC")
-    ui.hero("Video Explorer", "Search every video the pipeline has observed")
-    if not guard():
-        return
+    if not embedded:
+        ui.hero("Video Explorer", "Search every video the pipeline has observed")
+        if not guard():
+            return
     c1, c2, c3, c4 = st.columns([2.2, 1, 1.4, 1])
     search = c1.text_input("Search title or channel", key="vx_q", placeholder="e.g. trailer, cricket, AI…")
     region = c2.selectbox("Country", ["GLOBAL"] + list(q("regions").region_code), key="vx_region")

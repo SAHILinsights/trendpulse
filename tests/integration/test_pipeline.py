@@ -106,11 +106,15 @@ def test_failed_quality_gate_preserves_previous_gold(make_pipeline, wh, clock):
     assert "negative_view_count" in res.error
     assert wh.scalar(select(s.gold_trending_topics.c.snapshot_run_id).limit(1)) == snapshot == good.run_id
     assert count(wh, s.fact_video_observations) == facts                 # no partial history
-    assert count(wh, s.quarantine_records, s.quarantine_records.c.run_id == res.run_id) == 0  # gate stopped first
+    # the gate still persists its quarantine, so the offending rows are inspectable
+    q = wh.read_df(select(s.quarantine_records).where(s.quarantine_records.c.run_id == res.run_id))
+    assert len(q) > 0 and set(q.check_name) == {"negative_view_count"}
     assert count(wh, s.dq_results, s.dq_results.c.run_id == res.run_id) > 0  # audit still written
     assert count(wh, s.bronze_api_responses, s.bronze_api_responses.c.run_id == res.run_id) > 0
     stages = {r["stage"]: r["status"] for r in res.stages}
-    assert stages["publish_gold"] == "skipped" and stages["update_execution_metadata"] == "success"
+    assert stages["quarantine_records"] == "success"
+    assert stages["publish_gold"] == "skipped" and stages["generate_gold_aggregates"] == "skipped"
+    assert stages["update_execution_metadata"] == "success"
 
 
 def test_crash_during_publication_rolls_back_and_replay_recovers(make_pipeline, wh, clock, monkeypatch):
@@ -178,7 +182,20 @@ def test_partial_ingestion_still_publishes(make_pipeline, wh, settings, clock):
     assert res.counts["quota_used_run"] == 12
 
 
-def test_live_mode_without_key_fails_clearly(make_pipeline):
+def test_live_mode_is_disabled_until_compliance_is_recorded(make_pipeline, wh, settings):
+    res = make_pipeline().run(data_source="youtube_api", api_key="real-looking-key")
+    assert res.status == "skipped" and not res.gold_published
+    row = wh.read_df(select(s.pipeline_runs)).iloc[0]
+    assert row.status == "skipped" and "compliance" in row.error_message
+    assert count(wh, s.api_request_log) == 0                     # not a single API call
+    settings.pipeline.sources.youtube.live_ingestion_enabled = True
+    res2 = make_pipeline().run(data_source="youtube_api", api_key="k")
+    assert res2.status == "failed" and "compliance_approval_reference" in res2.error
+
+
+def test_live_mode_without_key_fails_clearly(make_pipeline, settings):
+    settings.pipeline.sources.youtube.live_ingestion_enabled = True
+    settings.pipeline.sources.youtube.compliance_approval_reference = "test-approval"
     res = make_pipeline().run(data_source="youtube_api", api_key="")
     assert res.status == "failed" and "YOUTUBE_API_KEY" in res.error
 
@@ -201,3 +218,32 @@ def test_malformed_items_are_quarantined_not_dropped(make_pipeline, wh, clock):
     assert res.status == "success" and res.counts["quarantined"] > 0
     q = wh.read_df(select(s.quarantine_records))
     assert set(q.check_name) == {"missing_channel_id"} and q.payload.str.contains('"id"').all()
+
+
+def test_run_logs_are_persisted_with_stage_context(make_pipeline, wh, monkeypatch):
+    res = make_pipeline().run(data_source="sample_fixture")
+    logs = wh.read_df(select(s.pipeline_log_records).where(s.pipeline_log_records.c.run_id == res.run_id))
+    assert not logs.empty and set(logs.level) <= {"INFO", "WARNING", "ERROR"}
+    assert {"extract_topics", "publish_gold"} <= set(logs.stage.dropna())
+    assert logs.message.str.contains("gold published").any()
+
+    def boom(*a, **k):
+        raise RuntimeError("explode for log test")
+    monkeypatch.setattr(builder, "build_serving", boom)
+    bad = make_pipeline().run(data_source="sample_fixture")
+    err = wh.read_df(select(s.pipeline_log_records).where(s.pipeline_log_records.c.run_id == bad.run_id)
+                     .where(s.pipeline_log_records.c.level == "ERROR"))
+    assert not err.empty and err.exc_text.str.contains("explode for log test").any()
+    assert set(err.stage) == {"publish_gold"}
+
+
+def test_run_timestamps_follow_the_execution_clock(make_pipeline, wh, clock):
+    res = make_pipeline().run(data_source="sample_fixture")
+    run = wh.read_df(select(s.pipeline_runs).where(s.pipeline_runs.c.run_id == res.run_id)).iloc[0]
+    assert run.duration_seconds > 0                              # real elapsed time, never clamped to zero
+    assert run.started_at <= run.finished_at                     # coherent even on a simulated clock
+    stg = wh.read_df(select(s.pipeline_stage_runs).where(s.pipeline_stage_runs.c.run_id == res.run_id))
+    assert (stg.started_at >= run.started_at).all()
+    # the run row is finalised in stage 15; status publication and notifications follow it
+    core = stg[stg.stage_order < 14]          # stages before update_execution_metadata
+    assert (core.finished_at <= run.finished_at).all()

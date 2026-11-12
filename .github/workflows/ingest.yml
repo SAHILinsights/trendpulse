@@ -6,6 +6,15 @@ on:
     - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
+      action:
+        description: "run = new execution; replay = rebuild Silver/Gold of an existing run from Bronze"
+        type: choice
+        options: [run, replay]
+        default: run
+      run_id:
+        description: "Run UUID (required for replay)"
+        required: false
+        default: ""
       force_search:
         description: "Run a topic-search discovery cycle even if not due (costs ~600 quota units)"
         type: boolean
@@ -25,9 +34,15 @@ concurrency:
 
 jobs:
   ingest:
+    # Scheduled runs only start once live ingestion has been approved and switched on
+    # (repository variable TRENDPULSE_LIVE_INGESTION_ENABLED=true, see docs/data_source_compliance.md).
+    # Manual dispatch always works (e.g. replay), and the pipeline itself enforces the switch.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.TRENDPULSE_LIVE_INGESTION_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
+      TRENDPULSE__SOURCES__YOUTUBE__LIVE_INGESTION_ENABLED: ${{ vars.TRENDPULSE_LIVE_INGESTION_ENABLED || 'false' }}
+      TRENDPULSE__SOURCES__YOUTUBE__COMPLIANCE_APPROVAL_REFERENCE: ${{ vars.TRENDPULSE_COMPLIANCE_APPROVAL_REFERENCE }}
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       TRENDPULSE_ALERT_WEBHOOK_URL: ${{ secrets.TRENDPULSE_ALERT_WEBHOOK_URL }}
@@ -40,8 +55,10 @@ jobs:
       - name: Check required secrets
         run: |
           missing=""
-          [ -z "$YOUTUBE_API_KEY" ] && missing="$missing YOUTUBE_API_KEY"
           [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
+          if [ "$TRENDPULSE__SOURCES__YOUTUBE__LIVE_INGESTION_ENABLED" = "true" ] && [ -z "$YOUTUBE_API_KEY" ]; then
+            missing="$missing YOUTUBE_API_KEY"
+          fi
           if [ -n "$missing" ]; then
             echo "::error::Missing repository secrets:$missing (Settings -> Secrets and variables -> Actions). See docs/deployment.md"
             exit 1
@@ -54,10 +71,24 @@ jobs:
           cache-dependency-path: requirements.txt
       - run: pip install -r requirements.txt
       - name: Run pipeline
+        if: ${{ github.event_name == 'schedule' || inputs.action != 'replay' }}
+        env:
+          TRIGGER: ${{ github.event_name == 'schedule' && 'schedule' || 'workflow_dispatch' }}
+          FORCE_SEARCH: ${{ inputs.force_search }}
         run: |
-          ARGS="--trigger ${{ github.event_name == 'schedule' && 'schedule' || 'workflow_dispatch' }}"
-          if [ "${{ inputs.force_search }}" = "true" ]; then ARGS="$ARGS --force-search"; fi
+          ARGS="--trigger $TRIGGER"
+          if [ "$FORCE_SEARCH" = "true" ]; then ARGS="$ARGS --force-search"; fi
           trendpulse run $ARGS
+      - name: Replay run from Bronze
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'replay' }}
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          # inputs arrive via env (never interpolated into the script) and are strictly validated
+          if ! [[ "$RUN_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "::error::invalid run_id"; exit 1
+          fi
+          trendpulse replay --run-id "$RUN_ID"
       - name: Upload run status
         if: always()
         uses: actions/upload-artifact@v4

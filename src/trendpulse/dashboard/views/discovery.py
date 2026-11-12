@@ -24,10 +24,11 @@ def _growth_bar(df: pd.DataFrame, title_col: str = "topic_name") -> go.Figure:
     return ui.style_fig(fig, max(260, 26 * len(d) + 60), legend=False, xtitle="Popularity-score growth (%)")
 
 
-def render() -> None:
-    ui.hero("Trend Discovery", "Which topics are emerging, accelerating, peaking or fading")
-    if not guard():
-        return
+def render(embedded: bool = False) -> None:
+    if not embedded:
+        ui.hero("Trend Discovery", "Which topics are emerging, accelerating, peaking or fading")
+        if not guard():
+            return
     regions = ["GLOBAL"] + list(q("regions").region_code)
     f1, f2, f3, f4, f5 = st.columns([1.1, 1.6, 1.4, 1.6, 1.6])
     region = f1.selectbox("Country", regions, key="disc_region")

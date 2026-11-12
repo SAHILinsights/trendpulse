@@ -225,6 +225,18 @@ class LockCfg(BaseModel):
     ttl_minutes: int = 50
 
 
+class YouTubeSourceCfg(BaseModel):
+    """Live-ingestion switch. Off by default until the API use case is approved
+    (see docs/data_source_compliance.md)."""
+
+    live_ingestion_enabled: bool = False
+    compliance_approval_reference: str = ""
+
+
+class SourcesCfg(BaseModel):
+    youtube: YouTubeSourceCfg = Field(default_factory=YouTubeSourceCfg)
+
+
 class AlertsCfg(BaseModel):
     on_failure: bool = True
     on_dq_warning: bool = False
@@ -243,6 +255,7 @@ class PipelineConfig(BaseModel):
     retention: RetentionCfg = Field(default_factory=RetentionCfg)
     lock: LockCfg = Field(default_factory=LockCfg)
     alerts: AlertsCfg = Field(default_factory=AlertsCfg)
+    sources: SourcesCfg = Field(default_factory=SourcesCfg)
 
     @property
     def comparison_windows(self) -> dict[str, int]:

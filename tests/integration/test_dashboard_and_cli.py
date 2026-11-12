@@ -138,9 +138,17 @@ def test_streamlit_pages_render_without_exceptions(populated, monkeypatch, tmp_p
     from trendpulse.settings import get_settings
     if populated.is_postgres:
         pytest.skip("page smoke tests copy the SQLite fixture")
-    shutil.copy(populated.engine.url.database, tmp_path / "trendpulse.db")
+    import os
+
+    import streamlit as st
+    src = populated.engine.url.database
+    for suffix in ("", "-wal", "-shm"):      # uncheckpointed WAL pages must travel with the copy
+        if os.path.exists(f"{src}{suffix}"):
+            shutil.copy(f"{src}{suffix}", tmp_path / f"trendpulse.db{suffix}")
     monkeypatch.setenv("TRENDPULSE_DATA_DIR", str(tmp_path))
     get_settings.cache_clear()
+    st.cache_data.clear()
+    st.cache_resource.clear()
     try:
         app = testing.AppTest.from_function(_page_script, args=(module,), default_timeout=90)
         app.run()

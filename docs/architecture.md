@@ -140,3 +140,29 @@ src/trendpulse/
   dashboard/             data access (pure) · runtime (cache, secrets) · components · 7 views
   cli.py                 trendpulse run | simulate | replay | migrate | status | …
 ```
+
+## Control plane (engineering-first UI)
+
+```mermaid
+flowchart TB
+  subgraph UI[Streamlit control plane · read-only role]
+    P1[Platform Overview] --- P2[Pipeline Orchestrator] --- P3[Data Lakehouse] --- P4[Quality & Governance]
+    P5[Lineage & Observability] --- P6[Execution History & Recovery] --- P7[Trend Intelligence]
+  end
+  OPS[dashboard/ops.py<br/>read-only queries + rules] --> UI
+  DAG[orchestration/dag.py<br/>declared stages & datasets] --> OPS
+  CAT[catalog.py<br/>layer · purpose · partitioning] --> OPS
+  FW[quality/framework.py<br/>check catalog · gate policy] --> OPS
+  PG[(pipeline_runs · pipeline_stage_runs · pipeline_log_records ·<br/>dq_results · quarantine_records · api_request_log · all layers)] --> OPS
+  UI -- operator only --> GH[workflow_dispatch: run / replay]
+```
+
+Separation of concerns: page modules (`dashboard/views/*`) only lay out widgets; queries and
+business rules (health status, action availability, lineage) live in `dashboard/ops.py`; figure
+construction in `dashboard/figures.py`; design tokens and components in `dashboard/components.py`.
+
+Schema v2 (additive) adds `pipeline_log_records`. No existing table changed.
+
+Measured query latency on PostgreSQL 16 as the reader role (122 runs, ~100k fact rows): platform
+health 17 ms, run page 8 ms, DAG state 11 ms, catalog 51 ms, log search 4 ms, lineage metrics
+20 ms, Silver partitions 68 ms. Queries are cached for 60–120 s and every list is limited or paged.

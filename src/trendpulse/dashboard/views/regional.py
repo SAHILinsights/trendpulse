@@ -11,10 +11,11 @@ SEQ = [[0, "#16213a"], [0.25, "#184f95"], [0.5, "#256abf"], [0.75, "#5598e7"], [
 DIV = [[0, "#e66767"], [0.5, "#383835"], [1, "#3987e5"]]  # red <-> grey <-> blue
 
 
-def render() -> None:
-    ui.hero("Regional Intelligence", "Compare what each country is watching")
-    if not guard():
-        return
+def render(embedded: bool = False) -> None:
+    if not embedded:
+        ui.hero("Regional Intelligence", "Compare what each country is watching")
+        if not guard():
+            return
     reg = q("regional_comparison")
     if reg.empty:
         ui.empty_state("No regional data", "")
