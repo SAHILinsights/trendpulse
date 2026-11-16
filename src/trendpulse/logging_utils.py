@@ -87,6 +87,41 @@ class _StdoutHandler(logging.StreamHandler):
         super().emit(record)
 
 
+class RunLogCollector(logging.Handler):
+    """Buffers INFO+ records of ONE run (matched on the run_id context) for persistence.
+
+    The orchestrator attaches it for the duration of a run and flushes the buffer into
+    ``pipeline_log_records`` after every stage, so logs survive even if a later stage crashes.
+    """
+
+    def __init__(self, run_id: str, level: int = logging.INFO, max_records: int = 5000, clock=None):
+        super().__init__(level)
+        self.run_id = run_id
+        self.clock = clock   # execution clock (defaults to the record's wall-clock time)
+        self.max_records = max_records
+        self.buffer: list[dict] = []
+        self.dropped = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if _run_id.get() != self.run_id:
+            return
+        if len(self.buffer) >= self.max_records:
+            self.dropped += 1
+            return
+        exc = None
+        if record.exc_info:
+            exc = redact(logging.Formatter().formatException(record.exc_info))[:8000]
+        self.buffer.append({
+            "run_id": self.run_id, "stage": _stage.get(), "level": record.levelname,
+            "logger": record.name[:80], "message": redact(record.getMessage())[:4000], "exc_text": exc,
+            "logged_at": self.clock() if self.clock else datetime.fromtimestamp(record.created, UTC),
+        })
+
+    def drain(self) -> list[dict]:
+        out, self.buffer = self.buffer, []
+        return out
+
+
 _configured = False
 
 

@@ -222,10 +222,36 @@ class SampleYouTubeSession:
         return [v for _, v in scored]
 
     # ----------------------------------------------------------- HTTP surface
+    # Fault injection (``trendpulse simulate --chaos``): exercises the real failure paths.
+    #   corrupt_metrics — 40 % of items get viewCount "-1"      → negative_view_count FAIL (gate closes)
+    #   schema_break    — 30 % of items lose statistics.viewCount → schema_drift FAIL
+    #   outage          — every request for region JP returns 503 → retries exhausted, run partial
+    #   flaky           — every 4th request fails once with 503   → client retries succeed
+    FAULT_MODES = ("corrupt_metrics", "schema_break", "outage", "flaky")
+
     def get(self, url: str, params: dict[str, Any] | None = None, timeout: float | None = None) -> _Resp:
         params = dict(params or {})
         params.pop("key", None)
         self.calls.append((url, params))
+        mode = getattr(self, "mode", None)
+        if mode == "outage" and params.get("regionCode") == "JP":
+            return _Resp(503, {"error": {"code": 503, "errors": [{"reason": "backendError"}]}})
+        if mode == "flaky" and len(self.calls) % 4 == 0 and not getattr(self, "_flaked", False):
+            self._flaked = True
+            return _Resp(503, {"error": {"code": 503, "errors": [{"reason": "backendError"}]}})
+        self._flaked = False
+        resp = self._get(url, params)
+        if mode in {"corrupt_metrics", "schema_break"} and resp.status_code == 200:
+            for i, it in enumerate(resp.json().get("items", [])):
+                if "statistics" not in it:
+                    continue
+                if mode == "corrupt_metrics" and i % 5 < 2:
+                    it["statistics"]["viewCount"] = "-1"
+                if mode == "schema_break" and i % 10 < 3:
+                    it["statistics"].pop("viewCount", None)
+        return resp
+
+    def _get(self, url: str, params: dict[str, Any]) -> _Resp:
         h = self._hours()
         resource = url.rstrip("/").rsplit("/", 1)[-1]
         if resource == "videos":

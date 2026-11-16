@@ -50,12 +50,22 @@ def _v1_initial(conn: Connection, wh: Warehouse) -> None:
             f"IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN "
             f"REVOKE ALL ON SCHEMA {s.PG_SCHEMA} FROM authenticated; END IF; END $$;"
         ))
-    tables = [t for t in s.metadata.sorted_tables if t.name != "schema_migrations"]
+    later = {name for names in TABLES_BY_VERSION.values() for name in names}
+    tables = [t for t in s.metadata.sorted_tables if t.name != "schema_migrations" and t.name not in later]
     s.metadata.create_all(conn, tables=tables, checkfirst=True)
 
 
+def _v2_pipeline_logs(conn: Connection, wh: Warehouse) -> None:
+    """Additive: run-scoped structured log records (no change to existing tables)."""
+    s.metadata.create_all(conn, tables=[s.metadata.tables[n] for n in TABLES_BY_VERSION[2]], checkfirst=True)
+
+
+# Tables introduced after the initial schema, by migration version (used by v1 and the SQL exporter).
+TABLES_BY_VERSION: dict[int, list[str]] = {2: ["pipeline_log_records"]}
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "initial medallion schema (bronze/silver/gold + operational metadata)", _v1_initial),
+    Migration(2, "pipeline_log_records: persisted run-scoped structured logs", _v2_pipeline_logs),
 ]
 
 

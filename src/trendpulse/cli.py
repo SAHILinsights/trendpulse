@@ -70,13 +70,22 @@ def cmd_simulate(args, settings) -> int:
     pipe = Pipeline(settings, wh, session_factory=lambda st: session, clock=lambda: clock["t"],
                     lake_dir=settings.data_dir / "lake" if args.lake else None, notify=False)
     statuses: dict[str, int] = {}
+    chaos = {}
+    if args.chaos:   # deterministic fault schedule near the end so it shows up in recent history
+        n = args.cycles
+        chaos = {max(0, n - 30): "corrupt_metrics", max(0, n - 20): "schema_break", max(0, n - 12): "outage"}
+        chaos.update({i: "flaky" for i in range(5, n, 9) if i not in chaos})
     for i in range(args.cycles):
         clock["t"] = start + timedelta(minutes=args.interval * i)
-        res = pipe.run(trigger="simulation", data_source="sample_fixture")
+        session.mode = chaos.get(i)
+        res = pipe.run(trigger="simulation" + (f":{session.mode}" if session.mode else ""),
+                       data_source="sample_fixture")
         statuses[res.status] = statuses.get(res.status, 0) + 1
         print(f"[{i + 1:>3}/{args.cycles}] {clock['t']:%Y-%m-%d %H:%M} UTC  {res.status:<10} "
               f"videos={res.counts['videos']:<4} topics={res.counts['topics']:<4} quota={res.counts['quota_used_run']}")
     print(json.dumps(statuses))
+    if args.chaos:
+        return EXIT_OK
     return EXIT_OK if not statuses.get("failed") else EXIT_FAILED
 
 
@@ -193,6 +202,9 @@ def build_parser() -> argparse.ArgumentParser:
     sm.add_argument("--interval", type=int, default=30)
     sm.add_argument("--fault-rate", type=float, default=0.002, help="fraction of malformed sample items")
     sm.add_argument("--lake", action="store_true", help="also write the local Parquet/JSON lake")
+    sm.add_argument("--chaos", action="store_true",
+                    help="inject faults on a fixed schedule (corrupt metrics, schema break, regional outage, "
+                         "flaky requests) to exercise gates, quarantine, retries and partial runs")
     sm.add_argument("--allow-sample-on-postgres", action="store_true")
     sm.set_defaults(fn=cmd_simulate)
     rp = sub.add_parser("replay", help="rebuild Silver/Gold for a run from its Bronze data")

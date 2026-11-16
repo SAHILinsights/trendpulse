@@ -71,6 +71,7 @@ def apply_retention(wh: Warehouse, cfg: RetentionCfg, now: datetime | None = Non
         _del("silver_video_observations", s.silver_video_observations,
              s.silver_video_observations.c.observed_at, cfg.silver_days)
         _del("api_request_log", s.api_request_log, s.api_request_log.c.requested_at, cfg.api_log_days)
+        _del("pipeline_log_records", s.pipeline_log_records, s.pipeline_log_records.c.logged_at, cfg.api_log_days)
         _del("dq_results", s.dq_results, s.dq_results.c.executed_at, cfg.pipeline_history_days)
         _del("quarantine_records", s.quarantine_records, s.quarantine_records.c.quarantined_at,
              cfg.quarantine_days)

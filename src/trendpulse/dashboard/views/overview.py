@@ -8,14 +8,15 @@ from trendpulse.dashboard.app import guard
 from trendpulse.dashboard.runtime import q
 
 
-def render() -> None:
+def render(embedded: bool = False) -> None:
     tz = st.session_state.get("tz", "UTC")
     health = st.session_state.get("health") or {}
-    ui.hero("Global Overview", "What is trending across monitored YouTube regions right now",
-            ui.badge(f"Freshness: {health.get('freshness', '—')}",
-                     ui.STATUS["good" if health.get("freshness") == "fresh" else "warning"], "●"))
-    if not guard():
-        return
+    if not embedded:
+        ui.hero("Global Overview", "What is trending across monitored YouTube regions right now",
+                ui.badge(f"Freshness: {health.get('freshness', '—')}",
+                         ui.STATUS["good" if health.get("freshness") == "fresh" else "warning"], "●"))
+        if not guard():
+            return
     c = q("overview_counts")
     growth = q("growth", "GLOBAL", "24h")
     fastest = "—"

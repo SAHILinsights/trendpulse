@@ -24,6 +24,7 @@ Generated from `src/trendpulse/storage/schema.py` by `scripts/generate_data_dict
 | [`dq_results`](#dq_results) | Operational | Data-quality audit: one row per check per run. |
 | [`gold_publications`](#gold_publications) | Operational | Log of published Gold snapshots. |
 | [`pipeline_lock`](#pipeline_lock) | Operational | TTL lock preventing overlapping executions. |
+| [`pipeline_log_records`](#pipeline_log_records) | Operational | Run-scoped structured log records (INFO+), searchable in the control plane. |
 | [`pipeline_runs`](#pipeline_runs) | Operational | One row per execution: status, trigger, data source, counts, quota, DQ status, error. |
 | [`pipeline_stage_runs`](#pipeline_stage_runs) | Operational | Per-stage timing, status, attempts and record counts. |
 | [`quarantine_records`](#quarantine_records) | Operational | Rejected records with reasons and raw payload. |
@@ -447,6 +448,25 @@ Primary key: `(lock_name)`
 | `owner_run_id` | VARCHAR(36) | no |  |
 | `acquired_at` | TIMESTAMPTZ | no |  |
 | `expires_at` | TIMESTAMPTZ | no |  |
+
+## pipeline_log_records
+
+*Operational* — Run-scoped structured log records (INFO+), searchable in the control plane.
+
+Primary key: `(id)`
+
+Indexes: `ix_logs_level(level)`, `ix_logs_logged_at(logged_at)`, `ix_logs_run(run_id, logged_at)`
+
+| Column | Type | Null | Description |
+|---|---|---|---|
+| `id` | INTEGER | no |  |
+| `run_id` | VARCHAR(36) | no | Pipeline execution UUID |
+| `stage` | VARCHAR(48) | yes |  |
+| `level` | VARCHAR(10) | no |  |
+| `logger` | VARCHAR(80) | no |  |
+| `message` | TEXT | no |  |
+| `exc_text` | TEXT | yes |  |
+| `logged_at` | TIMESTAMPTZ | no |  |
 
 ## pipeline_runs
 

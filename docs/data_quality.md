@@ -64,8 +64,8 @@ validate_schema   → schema_drift (Bronze payload profile)
 transform_silver  → record checks 1–7, 9, 13, 14 → valid set + quarantine list
 extract_topics    → (on valid rows only)
 data_quality      → stale_data, volume_anomaly, missing_topic_ids; write dq_results; GATE
-quarantine_records→ persist quarantine (only if the gate passed — a failed gate stops here, but
-                    its dq_results audit rows are already written)
+quarantine_records→ persist quarantine — runs on PASS **and on FAIL** (since schema v2 / control-plane
+                    upgrade), so the rows behind a closed gate are inspectable; Gold stays blocked
 ```
 
 ## Tested behaviour
@@ -74,3 +74,17 @@ quarantine_records→ persist quarantine (only if the gate passed — a failed g
 disabling, schema drift levels, staleness and volume rules. `tests/integration/test_pipeline.py`
 proves that a failed gate leaves Gold and history untouched and that malformed records end up
 in quarantine with their raw payload.
+
+## Inspecting quality in the control plane
+
+**Data Quality & Governance** reads `dq_results` and `quarantine_records` directly:
+
+* *Overview* — gate decision for the latest audited run with the configured policy text, and the
+  14 checks merged with their definitions (`quality.framework.check_catalog()`).
+* *Validation history* — check × run heat-map (PASS/WARNING/FAIL), gate decisions over 7 days.
+* *Failed checks* — every WARNING/FAIL with its JSON details.
+* *Rejected records & quarantine* — paginated, filter by run and rule; selecting a record shows the
+  violated rule(s) with severity and description, and the raw API item as received.
+* *Schema validation*, *Data freshness*, *Audit history*, *Check catalog*.
+
+No quality score is computed — the page shows only what the audit tables contain.

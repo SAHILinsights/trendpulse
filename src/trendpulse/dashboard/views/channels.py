@@ -8,10 +8,11 @@ from trendpulse.dashboard.app import guard
 from trendpulse.dashboard.runtime import q
 
 
-def render() -> None:
-    ui.hero("Channel Intelligence", "Which channels are driving trending topics (last 24 hours)")
-    if not guard():
-        return
+def render(embedded: bool = False) -> None:
+    if not embedded:
+        ui.hero("Channel Intelligence", "Which channels are driving trending topics (last 24 hours)")
+        if not guard():
+            return
     region = st.selectbox("Region", ["GLOBAL"] + list(q("regions").region_code), key="ch_region")
     ch = q("channels", region, 100)
     if ch.empty:

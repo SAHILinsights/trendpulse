@@ -3,7 +3,11 @@
 CREATE SCHEMA IF NOT EXISTS trendpulse;
 SET search_path TO trendpulse;
 -- Keep the warehouse out of Supabase's auto-generated REST API.
-REVOKE ALL ON SCHEMA trendpulse FROM anon, authenticated;
+-- The anon/authenticated roles exist only on Supabase, so revoke only if present.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN REVOKE ALL ON SCHEMA trendpulse FROM anon; END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN REVOKE ALL ON SCHEMA trendpulse FROM authenticated; END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS api_request_log (
 	id SERIAL NOT NULL, 

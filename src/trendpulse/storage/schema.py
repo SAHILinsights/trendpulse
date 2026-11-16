@@ -174,6 +174,22 @@ quarantine_records = Table(
 Index("ix_quarantine_run", quarantine_records.c.run_id)
 Index("ix_quarantine_at", quarantine_records.c.quarantined_at)
 
+# Added in migration 2: run-scoped structured logs (searchable in the control plane).
+pipeline_log_records = Table(
+    "pipeline_log_records", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("run_id", String(36), nullable=False),
+    Column("stage", String(48)),
+    Column("level", String(10), nullable=False),
+    Column("logger", String(80), nullable=False),
+    Column("message", Text, nullable=False),
+    Column("exc_text", Text),
+    ts("logged_at", nullable=False),
+)
+Index("ix_logs_run", pipeline_log_records.c.run_id, pipeline_log_records.c.logged_at)
+Index("ix_logs_logged_at", pipeline_log_records.c.logged_at)
+Index("ix_logs_level", pipeline_log_records.c.level)
+
 gold_publications = Table(
     "gold_publications", metadata,
     Column("snapshot_run_id", String(36), primary_key=True),

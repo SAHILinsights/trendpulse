@@ -1,192 +1,171 @@
-# TrendPulse — Global YouTube Trending Intelligence Platform
+# TrendPulse — Real-Time Data Engineering & Intelligence Platform
 
 [![CI](https://github.com/OWNER/trendpulse-youtube-trending-intelligence/actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
-[![Scheduled ingestion](https://github.com/OWNER/trendpulse-youtube-trending-intelligence/actions/workflows/ingest.yml/badge.svg)](../../actions/workflows/ingest.yml)
-![Python](https://img.shields.io/badge/python-3.11%2B-3987e5) ![Cost](https://img.shields.io/badge/infra%20cost-%240-199e70)
+![Python](https://img.shields.io/badge/python-3.11%2B-60A5FA) ![Warehouse](https://img.shields.io/badge/warehouse-PostgreSQL%20%7C%20SQLite-60A5FA) ![Cost](https://img.shields.io/badge/infra%20cost-%240-22C55E)
 
-TrendPulse is an end-to-end **data engineering platform** that discovers YouTube topics,
-tracks how they **emerge, grow, peak and decline**, and compares them across ten countries.
-It pulls from the YouTube Data API v3 every 30 minutes, lands the raw responses in a
-**Bronze → Silver → Gold** medallion warehouse on PostgreSQL, gates every run on a 14-check
-data-quality framework, infers topics with lightweight NLP, and serves a Streamlit dashboard
-with a full pipeline **Control Center**.
+TrendPulse is a data platform that ingests global topic signals, processes them through a
+**Bronze → Silver → Gold medallion architecture**, enforces a **14-check data-quality gate**,
+keeps **append-only history**, and exposes everything through an **engineering control plane**:
+pipeline DAG, lakehouse catalog, quality governance, lineage, observability, structured logs,
+execution history and authorised recovery. Trend analytics are the consumption layer on top.
 
-> **Live demo:** _pending deployment_ — see [Deployment status](#deployment-status).
-> Topics, scores, growth and lifecycle stages are **calculated by TrendPulse**, not provided by
-> YouTube. Regional chart observations, search-discovered observations and inferred topics are
-> labelled separately throughout.
+> **The pipeline is the product; the dashboard is its control room.**
+>
+> **Status:** built and verified locally (SQLite + PostgreSQL 16). **Live YouTube ingestion is
+> disabled** pending data-source compliance approval — see
+> [docs/data_source_compliance.md](docs/data_source_compliance.md). All screenshots show runs
+> against the offline API simulator (labelled SAMPLE), including deliberately injected faults.
+> No public deployment exists yet.
 
-![Global overview](docs/images/overview.png)
+![Pipeline orchestrator — gate failure](docs/images/pipeline_orchestrator_gate_failure.png)
 
-## What it answers
-
-| Question | Where |
-|---|---|
-| What topics are trending globally / in India right now? | Overview · Trend Discovery (country filter) |
-| Which topics are growing fastest, which are losing popularity? | Trend Discovery (30m → 30d windows) |
-| Growth rate, velocity and acceleration of a topic | Trend Discovery table · Topic Intelligence |
-| How long has a topic stayed trending? | `consecutive_observations`, first/last observed |
-| Popular in India but not in the US? | Regional Intelligence → *Popular here, absent there* |
-| Which channels drive a topic? Which categories engage most? | Channel Intelligence · Overview |
-| Topics emerging across multiple countries | Regional Intelligence → shared topics heat-map |
-| How rankings changed over 24 h / 7 d / 30 d | rank change columns, topic history |
-
-## Architecture
+## 1 · Engineering architecture
 
 ```mermaid
 flowchart LR
-    GHA[GitHub Actions<br/>cron every 30 min<br/>+ manual dispatch] --> P
-    subgraph P[Python pipeline · 17 stages]
+    GHA[GitHub Actions<br/>cron + dispatch<br/>concurrency group] --> ORC
+    subgraph ORC[Orchestrator · 17 stages · TTL lock · run IDs · retries · replay]
       direction LR
-      Q[Quota guard<br/>retry · backoff] --> B[(Bronze<br/>raw JSON)]
-      B --> S[(Silver<br/>conformed + DQ)]
-      S --> T[Topic engine<br/>taxonomy + TF-IDF<br/>stable IDs]
-      T --> GATE{Quality<br/>gate}
-      GATE -- pass --> G[(Gold<br/>facts · dims · serving)]
-      GATE -- fail --> QR[(Quarantine<br/>+ audit)]
+      Q[Quota guard] --> ING[Ingestion<br/>charts · search · refresh]
+      ING --> B[(Bronze<br/>gzip JSON · SHA-256)]
+      B --> SV[Schema validation] --> S[(Silver<br/>conformed)]
+      S --> T[Topic extraction<br/>stable IDs]
+      T --> G{Quality gate}
+      G -- PASS/WARN --> GOLD[(Gold<br/>facts · dims · serving)]
+      G -- FAIL --> QR[(Quarantine + audit)]
     end
     YT[(YouTube Data API v3)] <--> Q
-    G --> PG[(Supabase PostgreSQL)]
-    PG -- read-only role --> ST[Streamlit dashboard<br/>7 pages]
+    GOLD --> PG[(PostgreSQL / Supabase)]
+    ORC -.metadata · logs · audits.-> PG
+    PG -- read-only role --> CP[Control plane<br/>7 modules]
 ```
 
-More: [architecture](docs/architecture.md) · [orchestration](docs/pipeline_orchestration.md) ·
-[technical design & tool choices](docs/technical_design.md).
+Details: [architecture](docs/architecture.md) · [orchestration](docs/pipeline_orchestration.md) ·
+[technical design](docs/technical_design.md).
 
-## Technology
+## 2 · Data ingestion
 
-Python 3.11 · YouTube Data API v3 · PostgreSQL (Supabase) · SQLite (local fallback) ·
-SQLAlchemy Core · DuckDB · Parquet · pandas · scikit-learn · Streamlit · Plotly · Pytest ·
-Ruff · GitHub Actions · Docker. No AWS, no paid services.
+YouTube Data API v3 client with quota pre-check against a Pacific-day ledger, refresh reserve,
+exponential backoff with full jitter, `Retry-After`, pagination and request logging (key never
+logged). Hybrid discovery: regional `mostPopular` charts (10 countries × 3 charts), rotating
+`search.list` seeds (6 every 3 h) and `videos.list` metric refresh of tracked videos.
+Planned usage ≤ 7,728 of 10,000 units/day — [api_quota_strategy.md](docs/api_quota_strategy.md).
 
-## Data source & API strategy
+## 3 · Medallion architecture
 
-* **Regional popular charts** — `videos.list?chart=mostPopular` per country, uncategorised plus
-  Music (10) and Gaming (20). Since July 2025 this chart follows YouTube's category charts rather
-  than the retired general Trending page, so TrendPulse never relies on it alone.
-* **Topic-oriented search** — `search.list` over 14 configurable seeds (AI, tech, gaming, music,
-  sports, finance, news, science…), rotated across countries; 6 searches every 3 hours.
-* **Metric refresh** — search-discovered videos are re-measured each cycle with `videos.list`
-  (50 IDs per unit) for 72 h, instead of repeating 100-unit searches.
-* **Quota**: planned ≤ 7,728 of 10,000 units/day, hard budget 9,000, refresh reserve 600,
-  daily ledger in Pacific time. Details: [api_quota_strategy.md](docs/api_quota_strategy.md).
+| Layer | Tables | Properties |
+|---|---|---|
+| Bronze | `bronze_api_responses` | raw response per API call, gzip JSON, SHA-256, lineage metadata, committed on arrival, replayable |
+| Silver | `silver_video_observations`, `bridge_video_topics`, `topic_aliases`, `quarantine_records` | tolerant parse, UTC, dedupe, record-level checks, rejected rows quarantined with raw payload |
+| Gold | 4 dims, 2 append-only facts, 5 serving tables | one transaction per publication; failure never touches the published snapshot |
 
-## Topic intelligence
+Catalog with schemas, row counts, sizes, partitions and samples: **Data Lakehouse** module and
+[data_dictionary.md](docs/data_dictionary.md).
 
-Two layers: a curated **taxonomy** (11 categories, 56 topics, weighted keyword evidence →
-confidence; low confidence goes to a review queue) and **discovered topics** (1–3-gram TF-IDF
-keyphrases shared by ≥ 3 videos from ≥ 2 channels, entity-filtered, similar phrases merged).
-Identities are deterministic (`dx_` + hash of a canonical key) with an alias table, so the same
-topic keeps its ID across runs and rebuilds.
+## 4 · Topic intelligence
 
-```
-popularity = 20·ln(1+videos) + 10·ln(1+channels) + 8·log10(1+views/hour) + engagement%
-growth %   = (current − previous) / previous × 100   (NULL when there is no honest baseline)
-velocity   = Δ score / hour        acceleration = Δ velocity / hour
-lifecycle  = baseline · emerging · growing · peaking · stable · declining · dormant
-```
+Keyword taxonomy (56 topics) + TF-IDF keyphrase discovery with deterministic IDs and aliases;
+popularity score, growth over 6 windows, velocity, acceleration, lifecycle — all documented
+TrendPulse calculations: [topic_intelligence.md](docs/topic_intelligence.md).
 
-Full methodology and edge cases: [topic_intelligence.md](docs/topic_intelligence.md).
+## 5 · Data quality
 
-## Data model
+14 checks (10 record-level, 4 dataset-level), PASS/WARNING/FAIL, `dq_results` audit row per check
+per run, quarantine with the exact failed rule, gate that blocks Gold. Since this upgrade a FAIL
+gate still persists its quarantine so the offending rows are inspectable.
+[data_quality.md](docs/data_quality.md).
 
-Bronze `bronze_api_responses` → Silver `silver_video_observations`, `bridge_video_topics` →
-Gold `fact_video_observations`, `fact_topic_observations`, `dim_videos`, `dim_channels`,
-`dim_regions`, `dim_topics`, `gold_trending_topics`, `gold_topic_growth`,
-`gold_regional_comparison`, `gold_channel_performance`, `gold_category_summary`.
-Facts are append-only and keyed by `run_id`; serving tables are replaced atomically per run.
-See the [data dictionary](docs/data_dictionary.md).
+## 6 · Orchestration
 
-## Data quality
+17 declared stages (`orchestration/dag.py`: group, dependencies, conditions, input/output
+datasets — tested against the executor), run/stage metadata in the warehouse, TTL lock,
+DB-error retries, abandoned-run detection, persisted structured logs (schema v2).
 
-14 checks (null IDs, duplicates, region codes, negative metrics, timestamps, topic coverage,
-categories, schema drift, staleness, volume anomalies, metric types, channel IDs) with
-PASS / WARNING / FAIL, a `dq_results` audit row per check per run, quarantine with reasons and
-raw payload, and a gate that blocks Gold publication. [data_quality.md](docs/data_quality.md).
+## 7 · Recovery & reliability
 
-## Reliability
+Bronze-per-response persistence · idempotent facts (`run_id` keys) · single-transaction Gold ·
+`trendpulse replay --run-id` · abandoned runs reconciled by replay · operator-only dispatch of
+run/replay through GitHub Actions. Per-stage retry and historical backfill are **not offered**
+(not supported by the backend / the API).
 
-Per-response Bronze persistence · TTL database lock + workflow concurrency group ·
-retries with jittered backoff · single-transaction Gold publication · idempotent replay from
-Bronze (`trendpulse replay --run-id`) · crashed runs marked `abandoned` · retention that compacts
-whole runs · optional webhook/email alerts on failure and recovery.
+## 8 · Data lineage
 
-## Quick start
+Dataset-level lineage Source → Bronze → Silver → Gold derived from the declared stage
+inputs/outputs; per-execution transformation metrics (records in/out, rejected, duration, DQ).
+
+## 9 · Monitoring
+
+Platform health (Healthy / Degraded / Failed / Stale / Not initialized, rules in `dashboard/ops.py`),
+active conditions, throughput, stage durations, retry/error frequency, rejection rate, quota,
+freshness by region, searchable logs, optional webhook/email alerts.
+
+## The control plane (7 modules)
+
+| Module | What an engineer does there |
+|---|---|
+| **Platform Overview** | health status with reasons, last successful vs last attempted run, success rate, freshness, records/rejections, DQ, quota, active conditions |
+| **Pipeline Orchestrator** | interactive DAG of any execution from recorded stage metadata; click a node → stage inspector (datasets, timings, counts, attempts, errors, logs) |
+| **Data Lakehouse** | catalog of all 26 tables by layer; search, schema/index inspector, paginated samples (payload columns never selected), partitions, lineage |
+| **Data Quality & Governance** | gate decision, 14 checks, validation history heat-map, failed checks, quarantine browser with raw payload + violated rule, schema drift, freshness, audit history |
+| **Lineage & Observability** | interactive lineage graph, per-run transformation metrics, operational charts, structured log explorer (search, severity, run, stage, time) |
+| **Execution History & Recovery** | filterable, paginated history; timeline, stages, logs & stack traces, retry history, metrics; authorised replay / new run |
+| **Trend Intelligence** | Gold data products (emerging/growth, topic detail, regional, channels, videos) |
+
+| Platform overview | Data quality & governance |
+|---|---|
+| ![](docs/images/platform_overview.png) | ![](docs/images/data_quality.png) |
+| **Data lakehouse** | **Lineage & observability** |
+| ![](docs/images/data_lakehouse.png) | ![](docs/images/lineage_observability.png) |
+| **Execution history & recovery** | **Trend intelligence** |
+| ![](docs/images/execution_recovery_gate_failure.png) | ![](docs/images/trend_intelligence.png) |
+
+## 10 · Testing
 
 ```bash
-git clone https://github.com/OWNER/trendpulse-youtube-trending-intelligence && cd trendpulse-youtube-trending-intelligence
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-
-# Offline demo — 48 h of clearly-labelled SAMPLE data from the API simulator, local SQLite:
-trendpulse simulate --cycles 96
-streamlit run streamlit_app.py
-
-# Real data:
-cp .env.example .env        # set YOUTUBE_API_KEY (and DATABASE_URL for Postgres)
-trendpulse run --force-search
+ruff check src tests scripts streamlit_app.py
+python scripts/check_secrets.py
+pytest                                                    # SQLite warehouse
+TRENDPULSE_TEST_DATABASE_URL=postgresql://… pytest        # same suite on PostgreSQL
 ```
 
-Other commands: `trendpulse status | validate-config | quota-plan | replay --run-id … |
-retention | export-parquet | migrate`. `make test` runs the suite.
+Latest: **149 passed, 1 skipped** on SQLite (skip = PostgreSQL-only role test), **136 passed,
+14 skipped** on PostgreSQL 16 (skips = page smoke tests that need the SQLite fixture), coverage
+**93 %** of 3,799 statements (view modules excluded from measurement; they are exercised by page
+smoke tests). Includes fault-injection scenarios, role-permission checks, empty/error states and
+all 7 modules. Details: [DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md).
 
-## Testing
+## 11 · Deployment
 
-`pytest` — 108 tests (unit + integration), no API key or cloud account needed: HTTP mocked
-with `responses`, end-to-end runs against the offline simulator, the same suite runs on SQLite
-and PostgreSQL (`TRENDPULSE_TEST_DATABASE_URL`), plus Streamlit page smoke tests.
-Coverage ≈ 93 % (dashboard view modules excluded from the measurement; they're exercised by
-the page smoke tests). Latest results: [DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md).
+GitHub Actions (CI + ingestion) → Supabase PostgreSQL → Streamlit Community Cloud, $0.
+Exact steps, secrets and repository variables: [deployment.md](docs/deployment.md).
+Live ingestion remains off until compliance is resolved.
 
-## Deployment
+## Quick start (offline)
 
-GitHub Actions (CI + scheduled ingestion) → Supabase → Streamlit Community Cloud.
-Step-by-step with exact secrets: [deployment.md](docs/deployment.md).
-Problems: [troubleshooting.md](docs/troubleshooting.md). Security: [SECURITY.md](SECURITY.md).
+```bash
+pip install -r requirements-dev.txt
+trendpulse simulate --cycles 96 --chaos      # 48 h of SAMPLE runs incl. injected faults
+streamlit run streamlit_app.py
+```
 
-### Deployment status
+Other commands: `trendpulse run | replay --run-id … | migrate | status | validate-config |
+quota-plan | retention | export-parquet`.
 
-Code, tests, migrations, workflows and dashboard are complete and verified locally (SQLite and
-PostgreSQL 16). Public deployment is waiting on account authorisation (YouTube API key,
-Supabase project, GitHub repository, Streamlit app) — tracked in
-[DEVELOPMENT_PROGRESS.md](DEVELOPMENT_PROGRESS.md#required-manual-actions).
+## Documentation
 
-## Screenshots
-
-The screenshots in `docs/images/` were captured from a local run on **SAMPLE data** (offline
-simulator — fictional videos and channels, visible SAMPLE banner). They show the interface,
-not real YouTube trends.
-
-| Trend discovery | Control center |
-|---|---|
-| ![](docs/images/discovery.png) | ![](docs/images/control_center.png) |
-| **Topic intelligence** | **Regional intelligence** |
-| ![](docs/images/topic.png) | ![](docs/images/regional.png) |
+[architecture](docs/architecture.md) · [data dictionary](docs/data_dictionary.md) ·
+[data quality](docs/data_quality.md) · [orchestration](docs/pipeline_orchestration.md) ·
+[deployment](docs/deployment.md) · [troubleshooting](docs/troubleshooting.md) ·
+[security review](docs/security_review.md) · [data-source compliance](docs/data_source_compliance.md) ·
+[topic intelligence](docs/topic_intelligence.md) · [API quota](docs/api_quota_strategy.md) ·
+[technical design](docs/technical_design.md) · [audit (phase 0)](docs/audit/phase0_audit.md)
 
 ## Limitations
 
-* The API exposes charts and search samples, not all of YouTube; topic popularity is relative
-  to what is observed.
-* Since July 2025 `mostPopular` is category-chart based (Music/Movies/Gaming-heavy).
-* Search discovery is sampled (6 searches / 3 h) to fit the free quota.
-* NLP is keyword/TF-IDF based; unsegmented scripts (Japanese, Korean) yield fewer discovered
-  topics.
-* GitHub cron is best-effort (delays of minutes are normal).
-* Free tiers: Supabase 500 MB (handled by tiered retention), Streamlit apps sleep when idle.
-* YouTube policies limit retention of API metadata (30 days) — see the compliance section.
-
-## Cost
-
-$0: GitHub Actions (public repo minutes are free), Supabase free plan, Streamlit Community
-Cloud, YouTube API default quota. No credit card required.
-
-## Future enhancements
-
-Embedding-based topic clustering with the same identity layer · per-language tokenisers for
-JP/KR · anomaly detection on topic velocity · dbt models over the Gold layer · partitioned
-fact tables · a public read-only API over the serving tables.
+Live data blocked on YouTube policy approval; API exposes charts/search samples, not all of
+YouTube; keyword/TF-IDF NLP (weak on unsegmented scripts); GitHub cron is best-effort; free
+tiers (500 MB DB, sleeping Streamlit apps); single shared operator passphrase.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). YouTube is a trademark of Google LLC; this project is not
-affiliated with or endorsed by YouTube.
+MIT. YouTube is a trademark of Google LLC; this project is not affiliated with or endorsed by YouTube.

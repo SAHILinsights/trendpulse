@@ -22,7 +22,7 @@ Community Cloud (sign in with GitHub). None needs a credit card for this setup.
 
 1. <https://supabase.com/dashboard> → *New project* (free plan). Save the database password.
 2. *SQL Editor* → paste and run `migrations/001_initial_schema.sql`.
-3. Open `migrations/002_roles.sql`, replace both `CHANGE_ME_*` passwords with long random values
+3. Open `migrations/roles.sql`, replace both `CHANGE_ME_*` passwords with long random values
    (`python -c "import secrets; print(secrets.token_urlsafe(32))"`), run it.
 4. *Project Settings → Database → Connection string → Session pooler* (IPv4-compatible; GitHub
    runners and Streamlit Cloud may lack IPv6, so do **not** use the direct `db.<ref>` host).
@@ -98,3 +98,22 @@ Data is unaffected — it lives in Supabase.
   `streamlit run streamlit_app.py`.
 * Docker: `docker compose up -d db dashboard` then
   `docker compose run --rm pipeline trendpulse run`.
+
+## Control-plane & compliance settings (added with the engineering upgrade)
+
+| Where | Name | Purpose |
+|---|---|---|
+| SQL editor | `migrations/002_pipeline_log_records.sql` | schema v2 (also applied automatically by `trendpulse migrate` / every run) |
+| SQL editor | `migrations/roles.sql` | roles incl. column-level Bronze metadata grant (renamed from `002_roles.sql`) |
+| GitHub → Variables | `TRENDPULSE_LIVE_INGESTION_ENABLED` | `true` only after the YouTube use case is approved; until then scheduled runs do not start |
+| GitHub → Variables | `TRENDPULSE_COMPLIANCE_APPROVAL_REFERENCE` | approval ticket/date; required by the pipeline when live ingestion is on |
+| Streamlit secrets (optional) | `TRENDPULSE_GITHUB_DISPATCH_TOKEN`, `TRENDPULSE_GITHUB_REPO`, `TRENDPULSE_OPERATOR_PASSPHRASE` | operator run/replay dispatch; omit all three to keep the dashboard purely read-only |
+
+Pre-deployment validation checklist:
+
+- [ ] `trendpulse validate-config` and `trendpulse quota-plan` pass
+- [ ] `psql "$DATABASE_URL" -c 'select max(version) from trendpulse.schema_migrations'` → 2
+- [ ] reader role: `SELECT` works, `INSERT` fails, `SELECT payload_gz` fails
+- [ ] `ingest.yml` manual dispatch with `action=run` records a `skipped` run while compliance is pending
+- [ ] dashboard sidebar shows *Warehouse PostgreSQL · schema v2* and *Live YouTube ingestion: disabled*
+- [ ] no secret appears in the Actions logs (`pipeline_log_records` is redacted too)
