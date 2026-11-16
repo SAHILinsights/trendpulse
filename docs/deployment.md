@@ -117,3 +117,12 @@ Pre-deployment validation checklist:
 - [ ] `ingest.yml` manual dispatch with `action=run` records a `skipped` run while compliance is pending
 - [ ] dashboard sidebar shows *Warehouse PostgreSQL · schema v2* and *Live YouTube ingestion: disabled*
 - [ ] no secret appears in the Actions logs (`pipeline_log_records` is redacted too)
+
+## Demo data while live ingestion is pending (`sample-data.yml`)
+
+*Actions → Load SAMPLE demo data → Run workflow* (type `SAMPLE` to confirm) backfills up to 96
+simulated 30-minute cycles from the offline API simulator into the warehouse, using the
+`DATABASE_URL` secret. No YouTube API call is made. Runs are stored with
+`data_source = 'sample_fixture'` and the dashboard shows a **SAMPLE DATA** banner. Before enabling
+live ingestion, start from an empty warehouse (drop and recreate the `trendpulse` schema, then
+re-run the migrations and `roles.sql`) so sample and live history never mix.
