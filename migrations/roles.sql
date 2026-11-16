@@ -16,6 +16,9 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Supabase's `postgres` is not a superuser: it must be a member of a role to hand objects to it.
+GRANT trendpulse_ingest TO CURRENT_USER;
+
 CREATE SCHEMA IF NOT EXISTS trendpulse;
 ALTER SCHEMA trendpulse OWNER TO trendpulse_ingest;
 -- If migration 001 already ran as `postgres`, hand the tables over:
