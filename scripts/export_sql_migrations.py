@@ -37,7 +37,11 @@ def main() -> None:
         f"CREATE SCHEMA IF NOT EXISTS {s.PG_SCHEMA};",
         f"SET search_path TO {s.PG_SCHEMA};",
         "-- Keep the warehouse out of Supabase's auto-generated REST API.",
-        f"REVOKE ALL ON SCHEMA {s.PG_SCHEMA} FROM anon, authenticated;",
+        "-- The anon/authenticated roles exist only on Supabase, so revoke only if present.",
+        "DO $$ BEGIN",
+        f"  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN REVOKE ALL ON SCHEMA {s.PG_SCHEMA} FROM anon; END IF;",
+        f"  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN REVOKE ALL ON SCHEMA {s.PG_SCHEMA} FROM authenticated; END IF;",
+        "END $$;",
         "",
     ]
     for table in s.metadata.sorted_tables:
