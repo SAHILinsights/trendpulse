@@ -4,7 +4,14 @@ name: Load SAMPLE demo data
 # API simulator (no YouTube API call, no API key, no quota) so every dashboard module can be
 # demonstrated while live ingestion waits for compliance approval. Every run is stored with
 # data_source = 'sample_fixture' and the dashboard shows a SAMPLE DATA banner.
+#
+# Demo refresh: every 30 minutes one more SAMPLE run continues the backfilled scenario
+# (--sample-epoch auto), so freshness, growth and lifecycle keep evolving. It switches itself off
+# when live ingestion is enabled (TRENDPULSE_LIVE_INGESTION_ENABLED=true), or set the repository
+# variable TRENDPULSE_SAMPLE_DEMO_SCHEDULE=false to stop it.
 on:
+  schedule:
+    - cron: "22,52 * * * *"
   workflow_dispatch:
     inputs:
       cycles:
@@ -30,6 +37,9 @@ concurrency:
 
 jobs:
   sample:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (vars.TRENDPULSE_LIVE_INGESTION_ENABLED != 'true' && vars.TRENDPULSE_SAMPLE_DEMO_SCHEDULE != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -39,6 +49,7 @@ jobs:
       TRENDPULSE__INGESTION__BACKOFF_BASE_SECONDS: "0.01"
     steps:
       - name: Validate inputs
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           CYCLES: ${{ inputs.cycles }}
           CONFIRM: ${{ inputs.confirm }}
@@ -57,6 +68,7 @@ jobs:
           cache-dependency-path: requirements.txt
       - run: pip install -r requirements.txt
       - name: Backfill SAMPLE cycles
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           CYCLES: ${{ inputs.cycles }}
           CHAOS: ${{ inputs.chaos }}
@@ -64,6 +76,11 @@ jobs:
           ARGS="--cycles $CYCLES --interval 30 --allow-sample-on-postgres"
           if [ "$CHAOS" = "true" ]; then ARGS="$ARGS --chaos"; fi
           trendpulse simulate $ARGS
+      - name: Scheduled SAMPLE demo refresh (continues the backfilled scenario)
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          [ -n "$DATABASE_URL" ] || { echo "::error::DATABASE_URL secret missing"; exit 1; }
+          trendpulse run --sample --allow-sample-on-postgres --sample-epoch auto --trigger schedule
       - name: Platform status
         if: always()
         run: trendpulse status

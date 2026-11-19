@@ -126,3 +126,8 @@ simulated 30-minute cycles from the offline API simulator into the warehouse, us
 `data_source = 'sample_fixture'` and the dashboard shows a **SAMPLE DATA** banner. Before enabling
 live ingestion, start from an empty warehouse (drop and recreate the `trendpulse` schema, then
 re-run the migrations and `roles.sql`) so sample and live history never mix.
+
+Afterwards the same workflow refreshes the demo every 30 minutes (cron `22,52 * * * *`): one
+SAMPLE run with `--sample-epoch auto`, which continues the backfilled scenario so freshness,
+growth and lifecycle keep evolving. It stops automatically when `TRENDPULSE_LIVE_INGESTION_ENABLED`
+is `true`, or when the repository variable `TRENDPULSE_SAMPLE_DEMO_SCHEDULE` is set to `false`.

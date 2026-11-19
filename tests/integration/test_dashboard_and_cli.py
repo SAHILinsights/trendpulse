@@ -115,6 +115,26 @@ def test_cli_sample_run_and_postgres_guard(monkeypatch, tmp_path):
         cli.main(["run", "--sample"])
 
 
+def test_cli_sample_run_continues_simulated_scenario(monkeypatch, tmp_path):
+    """`run --sample --sample-epoch auto` keeps the storyline reference time of the latest backfill."""
+    from datetime import UTC, datetime
+
+    from trendpulse.settings import load_settings
+    from trendpulse.storage.db import Warehouse
+
+    monkeypatch.setenv("TRENDPULSE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TRENDPULSE__INGESTION__MIN_SECONDS_BETWEEN_REQUESTS", "0")
+    settings = load_settings()
+    wh = Warehouse(settings.secrets.database_url, data_dir=settings.data_dir)
+    assert cli._sample_epoch(wh, None) is None
+    assert cli._sample_epoch(wh, "2026-11-19T21:19:00Z") == datetime(2026, 11, 19, 21, 19, tzinfo=UTC)
+    assert cli.main(["simulate", "--cycles", "3"]) == 0
+    epoch = cli._sample_epoch(wh, "auto")
+    assert epoch is not None and abs((datetime.now(UTC) - epoch).total_seconds()) < 600
+    assert cli.main(["run", "--sample", "--sample-epoch", "auto", "--trigger", "schedule"]) == 0
+    assert cli._sample_epoch(wh, "auto") == epoch   # scheduled runs never move the scenario
+
+
 def _page_script(module: str):
     import importlib
 

@@ -35,6 +35,33 @@ def _sample_guard(wh, allow: bool) -> None:
                          "(pass --allow-sample-on-postgres if this is a disposable database)")
 
 
+def _sample_epoch(wh, given: str | None) -> datetime | None:
+    """Reference time for the SAMPLE simulator's storylines.
+
+    ``--sample-epoch auto`` continues the scenario of the latest ``simulate`` backfill (its last
+    simulated run), so scheduled sample runs extend that history instead of restarting it.
+    An ISO timestamp pins it explicitly; nothing (default) uses the run's own start time.
+    """
+    if not given:
+        return None
+    if given != "auto":
+        ts = datetime.fromisoformat(given.replace("Z", "+00:00"))
+        return ts if ts.tzinfo else ts.replace(tzinfo=UTC)
+    from sqlalchemy import select
+
+    from trendpulse.storage import schema as s
+
+    r = s.pipeline_runs
+    with wh.connect() as conn:
+        last = conn.execute(select(r.c.started_at).where(r.c.data_source == "sample_fixture",
+                                                         r.c.trigger.like("simulation%"))
+                            .order_by(r.c.started_at.desc()).limit(1)).scalar()
+    if last is None:
+        return None
+    last = last if last.tzinfo else last.replace(tzinfo=UTC)
+    return last.replace(second=0, microsecond=0)
+
+
 def cmd_run(args, settings) -> int:
     from trendpulse.ingestion.sample import SampleYouTubeSession
     from trendpulse.orchestration.pipeline import Pipeline
@@ -46,7 +73,8 @@ def cmd_run(args, settings) -> int:
     if args.sample:
         _sample_guard(wh, args.allow_sample_on_postgres)
         source = "sample_fixture"
-        factory = lambda st: SampleYouTubeSession(lambda: st.now, epoch=st.now)  # noqa: E731
+        epoch = _sample_epoch(wh, args.sample_epoch)
+        factory = lambda st: SampleYouTubeSession(lambda: st.now, epoch=epoch or st.now)  # noqa: E731
     res = Pipeline(settings, wh, session_factory=factory, lake_dir=lake).run(
         trigger=args.trigger, data_source=source, force_search=args.force_search)
     print(json.dumps({"run_id": res.run_id, "status": res.status, "gold_published": res.gold_published,
@@ -196,6 +224,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--trigger", default="manual", choices=["manual", "schedule", "workflow_dispatch", "local"])
     r.add_argument("--force-search", action="store_true", help="run a search discovery cycle even if not due")
     r.add_argument("--allow-sample-on-postgres", action="store_true")
+    r.add_argument("--sample-epoch", default=None,
+                   help="with --sample: 'auto' continues the latest simulate backfill's scenario, "
+                        "or an ISO timestamp")
     r.set_defaults(fn=cmd_run)
     sm = sub.add_parser("simulate", help="backfill SAMPLE cycles on a simulated clock (local demo)")
     sm.add_argument("--cycles", type=int, default=96)
