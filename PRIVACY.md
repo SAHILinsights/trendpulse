@@ -38,6 +38,10 @@ Data is not sold, shared or combined with data from other platforms.
 - **Hosting.** The dashboard is hosted on Streamlit Community Cloud, which may keep standard
   server logs under its own privacy policy.
 
+## Terms
+
+See the [TrendPulse terms of service](TERMS.md).
+
 ## Contact and removal requests
 
 Open an issue at <https://github.com/SAHILinsights/trendpulse/issues>. Requests to remove data

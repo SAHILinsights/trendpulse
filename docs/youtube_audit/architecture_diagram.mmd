@@ -1,0 +1,16 @@
+flowchart LR
+  subgraph G["GitHub Actions (scheduled every 30 min)"]
+    P["TrendPulse pipeline (Python)<br/>quota guard · retries · 17 stages"]
+  end
+  YT[("YouTube Data API v3<br/>videos.list chart=mostPopular<br/>search.list · videos.list by id<br/>API key only, no OAuth")]
+  subgraph DB["Supabase PostgreSQL (private schema)"]
+    B["Bronze: raw responses<br/>kept 2 days"]
+    S["Silver: validated observations<br/>kept 1 day"]
+    GD["Gold: topic metrics<br/>video stats 30 days · topic aggregates 400 days<br/>metadata refreshed or deleted within 30 days"]
+  end
+  D["Public Streamlit dashboard<br/>read-only DB role<br/>derived metrics labelled 'calculated by TrendPulse'<br/>links back to YouTube"]
+  V(["Anonymous viewers<br/>no sign-in, no personal data"])
+  P -- "public data requests" --> YT
+  YT --> P
+  P --> B --> S --> GD
+  GD -- "SELECT only" --> D --> V

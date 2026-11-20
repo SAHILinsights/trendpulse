@@ -1,0 +1,9 @@
+flowchart TD
+  A(["Visitor opens trendpulse-sahil.streamlit.app<br/>(no sign-in, no Google account needed)"]) --> B["Platform Overview<br/>pipeline health, freshness, data quality"]
+  B --> C["Trend Intelligence<br/>top topics per country (TrendPulse-calculated scores)"]
+  C --> D["Topic detail<br/>growth over 1h / 24h / 7d, lifecycle stage,<br/>list of public videos with YouTube's own view counts"]
+  D --> E["Click a video"] --> F(["Opens the video on youtube.com"])
+  C --> G["Regional comparison / Channels"]
+  B --> H["Footer: Privacy policy · Terms of service ·<br/>YouTube Terms · Google Privacy Policy"]
+  I["No uploads, no edits, no OAuth, no write actions on YouTube"]:::note
+  classDef note fill:#fff7e6,stroke:#f59e0b

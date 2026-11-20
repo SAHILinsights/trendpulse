@@ -61,6 +61,25 @@ def _sidebar_footer(health: dict | None, mode) -> None:
             f"{ui.badge('enabled', ui.OK) if env['live'] else ui.badge('disabled · compliance', ui.WARN)}"
             + (f"<br>Snapshot&nbsp; <span class='tp-mono'>{ui.fmt_ts(health.get('snapshot_at'), st.session_state.tz)}"
                f"</span>" if health else "") + "</div>", unsafe_allow_html=True)
+        st.markdown(_legal_footer(), unsafe_allow_html=True)
+
+
+REPO_URL = "https://github.com/SAHILinsights/trendpulse"
+
+
+def _legal_footer() -> str:
+    """Attribution and policy links required for YouTube API Services clients."""
+    link = f"color:{ui.ACCENT};text-decoration:none"
+    return (
+        f"<div class='tp-caption' style='margin-top:10px;padding-top:8px;border-top:1px solid {ui.BORDER};"
+        f"line-height:1.8'>"
+        f"<span style='color:{ui.TEXT};font-weight:600'>Uses YouTube API Services</span>"
+        f"<br>Third-party analysis, not affiliated with or endorsed by YouTube."
+        f"<br><a style='{link}' href='{REPO_URL}/blob/main/PRIVACY.md' target='_blank'>Privacy policy</a>"
+        f" · <a style='{link}' href='{REPO_URL}/blob/main/TERMS.md' target='_blank'>Terms of service</a>"
+        f"<br><a style='{link}' href='https://www.youtube.com/t/terms' target='_blank'>YouTube Terms of Service</a>"
+        f" · <a style='{link}' href='https://policies.google.com/privacy' target='_blank'>Google Privacy Policy</a>"
+        f"</div>")
 
 
 def main() -> None:
